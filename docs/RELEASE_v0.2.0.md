@@ -112,7 +112,8 @@ agent that already has unrestricted access to the computer.
 ## Install
 
 ```powershell
-git clone <repository-url>
+$env:OUTREACH_REPOSITORY_URL = Read-Host "Paste the HTTPS URL from the repository's Code menu"
+git clone $env:OUTREACH_REPOSITORY_URL
 cd Auto-Following-Up-After-Applications
 npm install
 npm run dev:all
