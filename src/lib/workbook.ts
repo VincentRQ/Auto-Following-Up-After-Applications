@@ -243,7 +243,7 @@ function inferProfileFromSheet(sheetName: string): string {
 
 function deriveRoleTitle(description: string): string {
   const line = description.split(/\r?\n/).map((value) => value.trim()).find(Boolean) ?? "";
-  return line.replace(/<[^>]+>/g, "").slice(0, 140);
+  return line.replace(/[<>]/g, "").slice(0, 140);
 }
 
 export function serializeJobsToCsv(rows: JobRow[]): string {

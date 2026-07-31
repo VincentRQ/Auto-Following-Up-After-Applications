@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, lstatSync, openSync, readFileSync, readdirSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -40,8 +40,22 @@ const personalTerms = [
 
 for (const file of files) {
   const absolute = resolve(root, file);
-  const stat = lstatSync(absolute);
-  if (stat.isSymbolicLink()) failures.push(`${file}: symbolic links are not allowed in a release`);
+  const descriptor = openSync(absolute, "r");
+  let bytes;
+  let stat;
+  try {
+    stat = fstatSync(descriptor);
+    const before = lstatSync(absolute);
+    if (before.isSymbolicLink()) failures.push(`${file}: symbolic links are not allowed in a release`);
+    if (before.dev !== stat.dev || before.ino !== stat.ino) failures.push(`${file}: file identity changed while it was opened`);
+    bytes = readFileSync(descriptor);
+    const after = lstatSync(absolute);
+    if (after.isSymbolicLink() || after.dev !== stat.dev || after.ino !== stat.ino || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs) {
+      failures.push(`${file}: file changed while it was being audited`);
+    }
+  } finally {
+    closeSync(descriptor);
+  }
   if (stat.size > 8 * 1024 * 1024) failures.push(`${file}: tracked file exceeds the 8 MiB release limit`);
 
   const lower = file.toLowerCase();
@@ -59,7 +73,6 @@ for (const file of files) {
     failures.push(`${file}: private operational path is not allowed`);
   }
 
-  const bytes = readFileSync(absolute);
   let content = bytes.toString("utf8");
   if (file === "docs/APPLICATION_PROCESS_GUIDE.md") content = content.replaceAll(publicContact, "[PUBLIC_CONTACT]");
 

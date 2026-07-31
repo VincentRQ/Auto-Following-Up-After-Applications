@@ -40,6 +40,20 @@ describe("workbook normalization", () => {
     expect(result.rows[1].sentAt).toBe("2026-07-02T00:00:00.000Z");
   });
 
+  it("neutralizes markup characters in role titles derived from descriptions", () => {
+    const result = importWorkbookSheets([
+      {
+        sheet: "Applications",
+        data: [
+          ["Company", "Job URL", "Description"],
+          ["Acme", "https://example.com/role", "<scr<script>ipt>alert(1)</scr</script>ipt>\nRole details"],
+        ],
+      },
+    ], "applications.xlsx", "2026-07-03T00:00:00.000Z");
+
+    expect(result.rows[0].roleTitle).not.toMatch(/[<>]/);
+  });
+
   const qaWorkbook = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process?.env?.OUTREACH_QA_WORKBOOK;
   (qaWorkbook ? it : it.skip)("imports the operator workbook without exposing its contents", async () => {
     const sheets = await readWorkbook(qaWorkbook!) as unknown as WorkbookSheetInput[];
