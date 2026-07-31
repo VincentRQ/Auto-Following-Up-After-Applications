@@ -1,0 +1,6 @@
+company,contact_name,title,email,linkedin_url,tier,status,last_contacted_at,source,notes
+Demo Harbor,Morgan Sample,Senior Talent Acquisition Partner,morgan.sample@demo-harbor.invalid,https://profiles.example.invalid/morgan-sample,1,not_contacted,,Synthetic directory,Simulated contact for public demonstrations only
+Demo Harbor,Casey Example,Recruiter,casey.example@demo-harbor.invalid,https://profiles.example.invalid/casey-example,1,sent,2026-07-10T14:02:00Z,Synthetic directory,Simulated outreach history
+Demo Harbor,Riley Demo,People Operations Manager,riley.demo@demo-harbor.invalid,https://profiles.example.invalid/riley-demo,2,not_contacted,,Synthetic directory,Simulated fallback contact
+Example Works,Taylor Sample,Talent Acquisition Lead,taylor.sample@example-works.invalid,https://profiles.example.invalid/taylor-sample,1,replied,2026-07-10T15:16:00Z,Synthetic directory,Simulated positive reply
+Sample Northstar,Jamie Example,Recruiting Coordinator,jamie.example@sample-northstar.invalid,https://profiles.example.invalid/jamie-example,1,bounced,2026-07-09T16:31:00Z,Synthetic directory,Simulated recovery case

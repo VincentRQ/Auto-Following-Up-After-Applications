@@ -1,8 +1,14 @@
 # Writing Adapter Contract
 
-An in-app AI connection uses a private helper configured by
-`OUTREACH_WRITING_HELPER`. The helper can be a Python script, a Node.js script, or
-an executable. Credentials remain in the helper environment.
+In-app ChatGPT/Codex, Claude, Cursor, and OpenCode Go connections use the bundled
+plan CLI bridge. They do not require `OUTREACH_WRITING_HELPER`. The bridge checks
+the CLI's saved account authentication, removes provider API-key overrides, runs
+generation in a temporary workspace with tools denied or constrained, and
+validates the structured result.
+
+Ollama, separately billed APIs, and custom models use a private helper configured
+by `OUTREACH_WRITING_HELPER`. The helper can be a Python script, a Node.js script,
+or an executable. Credentials remain in the helper environment.
 
 The backend invokes:
 

@@ -195,6 +195,33 @@ test("public sample mode is an absolute provider send lock", async () => {
   await assert.rejects(() => providers.send({}), /disabled in public sample mode/);
 });
 
+test("public sample mode never opens a configured private database", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "outreach-sample-isolation-"));
+  const databasePath = join(directory, "private.sqlite");
+  const privateProviders = createProviders({ publicSampleMode: false, liveSendEnabled: false, profiles: {}, accounts: [], outlookHelper: "", legacyWorkspace: "", python: "python" });
+  const sampleProviders = createProviders({ publicSampleMode: true, liveSendEnabled: false, profiles: {}, accounts: [], outlookHelper: "", legacyWorkspace: "", python: "python" });
+  let privateServer;
+  let sampleServer;
+  try {
+    privateServer = createOutreachServer({ databasePath, providers: privateProviders });
+    await new Promise((resolve) => privateServer.listen(0, "127.0.0.1", resolve));
+    const privateHost = `http://127.0.0.1:${privateServer.address().port}`;
+    await fetchJson(privateHost, "/api/import/applications", { method: "POST", body: JSON.stringify({ source: "private", applications: [{ source_row_id: "private-row", company: "Private Company", profile: "private_profile", role_title: "Private Role" }] }) });
+    await new Promise((resolve) => privateServer.close(resolve));
+    privateServer = null;
+
+    sampleServer = createOutreachServer({ databasePath, providers: sampleProviders });
+    await new Promise((resolve) => sampleServer.listen(0, "127.0.0.1", resolve));
+    const sampleHost = `http://127.0.0.1:${sampleServer.address().port}`;
+    const crm = await fetchJson(sampleHost, "/api/crm/companies");
+    assert.deepEqual(crm.companies, []);
+  } finally {
+    if (privateServer?.listening) await new Promise((resolve) => privateServer.close(resolve));
+    if (sampleServer?.listening) await new Promise((resolve) => sampleServer.close(resolve));
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("environment safety flags override null local config values", () => {
   const config = mergeConfig(
     { publicSampleMode: false, liveSendEnabled: false },
@@ -358,6 +385,51 @@ test("writing adapter output is matched by draft ID and persisted for review", a
     const stored = await fetchJson(host, "/api/writing/drafts");
     assert.equal(stored.drafts[0].recipient_email, "alex@writing.example");
     assert.equal(stored.drafts[0].status, "ready");
+  } finally { await new Promise((resolve) => isolated.close(resolve)); }
+});
+
+test("writing adapter must return one unique result for every requested draft", async () => {
+  const fakeProviders = {
+    profiles: {}, accounts: [], liveSendEnabled: false, publicSampleMode: false,
+    status: () => ({ writing: "mock" }),
+    generateMessages: async () => [
+      { draft_id: "source-1::1", subject: "First", body: "First body" },
+      { draft_id: "source-1::1", subject: "Duplicate", body: "Duplicate body" },
+    ],
+  };
+  const isolated = createOutreachServer({ databasePath: ":memory:", providers: fakeProviders });
+  await new Promise((resolve) => isolated.listen(0, "127.0.0.1", resolve));
+  const host = `http://127.0.0.1:${isolated.address().port}`;
+  const draft = (id) => ({ id, jobRowId: id.split("::")[0], profile: "data_analyst", company: "Writing Company", roleTitle: "Data Analyst", recipientName: "Alex", recipientEmail: "alex@writing.example", recipientTitle: "Recruiter", mode: "in_app_llm", status: "needs_writing", subject: "", body: "", promptOverride: "", updatedAt: "2026-07-01T12:00:00Z" });
+  try {
+    const response = await fetch(`${host}/api/writing/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brief: "Use only supplied facts.", maximum_words: 80, drafts: [draft("source-1::1"), draft("source-2::1")] }) });
+    const value = await response.json();
+    assert.equal(response.status, 502);
+    assert.match(value.error, /duplicate draft ID/);
+  } finally { await new Promise((resolve) => isolated.close(resolve)); }
+});
+
+test("AI connection check route returns the provider's no-inference status", async () => {
+  let received = null;
+  const fakeProviders = {
+    profiles: {},
+    accounts: [],
+    liveSendEnabled: false,
+    publicSampleMode: false,
+    status: () => ({ writing: "bundled-plan-cli" }),
+    checkAi: async (input) => {
+      received = input;
+      return { mode: input.mode, label: "Fake plan CLI", status: "ready", installed: true, authenticated: true, detail: "Saved account login verified.", nextCommand: "", version: "1.0.0", availableModels: [] };
+    },
+  };
+  const isolated = createOutreachServer({ databasePath: ":memory:", providers: fakeProviders });
+  await new Promise((resolve) => isolated.listen(0, "127.0.0.1", resolve));
+  const host = `http://127.0.0.1:${isolated.address().port}`;
+  try {
+    const checked = await fetchJson(host, "/api/writing/check", { method: "POST", body: JSON.stringify({ controlMode: "in_app", mode: "codex_cli", model: "" }) });
+    assert.equal(checked.status, "ready");
+    assert.equal(checked.authenticated, true);
+    assert.equal(received.mode, "codex_cli");
   } finally { await new Promise((resolve) => isolated.close(resolve)); }
 });
 

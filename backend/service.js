@@ -126,6 +126,13 @@ export function createService(db, providers = null) {
       return result;
     },
 
+    async checkAiConnection(input) {
+      if (!providers?.checkAi) throw httpError(503, "AI connection checks are not available");
+      const result = await providers.checkAi(input ?? {});
+      writeLog(db, result.status === "ready" ? "info" : "warning", "setup", "AI connection checked", "", { mode: result.mode, status: result.status, installed: result.installed, authenticated: result.authenticated });
+      return result;
+    },
+
     listMessageDrafts(profile = "") {
       const sql = `SELECT * FROM message_drafts ${profile ? "WHERE profile = ?" : ""} ORDER BY updated_at DESC LIMIT 1000`;
       return profile ? db.prepare(sql).all(profile) : db.prepare(sql).all();
@@ -153,11 +160,16 @@ export function createService(db, providers = null) {
         brief: String(input.brief).slice(0, 200_000),
         maximum_words: maximumWords,
         drafts: input.drafts.map((item) => normalizeMessageDraft(item)),
+        ai_connection: input.ai_connection ?? {},
       });
       if (!Array.isArray(generated)) throw httpError(502, "Writing adapter returned an invalid response");
+      if (generated.length !== input.drafts.length) throw httpError(502, "Writing adapter did not return exactly one message per draft");
+      const returnedIds = new Set();
       const messages = generated.slice(0, input.drafts.length).map((item) => {
         const id = String(item?.draft_id ?? item?.id ?? "");
         if (!allowedIds.has(id)) throw httpError(502, "Writing adapter returned an unknown draft ID");
+        if (returnedIds.has(id)) throw httpError(502, "Writing adapter returned a duplicate draft ID");
+        returnedIds.add(id);
         const subject = String(item?.subject ?? "").trim().slice(0, 500);
         const body = String(item?.body ?? "").trim().slice(0, 20_000);
         if (!subject || !body) throw httpError(502, `Writing adapter returned an incomplete message for ${id}`);

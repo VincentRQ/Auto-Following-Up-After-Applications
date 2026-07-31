@@ -13,6 +13,11 @@ provider bridge but deliberately does not bundle vendor helper code or OAuth
 clients. Every selected provider remains `adapter-required` until a compatible
 local adapter is installed and verified.
 
+Writing is a separate connection role. ChatGPT/Codex, Claude, Cursor, and
+OpenCode Go use bundled CLI bridges after their own local sign-in succeeds.
+Custom models, local model servers, and separately billed APIs still use the
+writing-helper contract.
+
 ## Credential Boundary
 
 The browser stores provider names, enabled roles, and environment-variable
@@ -49,7 +54,8 @@ credentials and absolute helper paths.
 
 ## Intentional Boundary
 
-This is not a dynamic code downloader. Selecting an unsupported service does
+This is not a dynamic code downloader. The four plan CLI bridges invoke only
+CLIs the user installed and authorized locally. Selecting any other unsupported service does
 not install or execute third-party code. A provider adapter must be reviewed,
 installed locally, and tested before its status can become operational. This
 keeps customization broad without turning a lightweight local console into a

@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
+  Copy,
   Bug,
   Download,
   FileSpreadsheet,
@@ -36,6 +37,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AiConnectionSettings,
+  AiConnectionCheck,
   AiControlMode,
   BackendHealth,
   BatchInstructions,
@@ -71,6 +73,7 @@ import {
   buildPreflight,
   checkExternalStorageAdapter,
   checkBackendHealth,
+  checkAiConnection,
   addCrmContact,
   downloadJson,
   downloadText,
@@ -135,13 +138,16 @@ const defaultInstructions: BatchInstructions = {
 };
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:43127";
 const LEGACY_BACKEND_URL = "http://127.0.0.1:8787";
-const defaultAiConnection: AiConnectionSettings = { controlMode: "external_operator", mode: "manual", model: "", baseUrl: "", apiKeyEnv: "" };
+const defaultAiConnection: AiConnectionSettings = { controlMode: "external_operator", mode: "manual", model: "", baseUrl: "", apiKeyEnv: "", strictPlanOnly: false };
 const defaultOnboardingState: OnboardingState = { version: 2, completed: false, doNotPrompt: false, lastStep: 0, updatedAt: "" };
 
-const aiConnectionRecipes: Record<AiConnectionSettings["mode"], { title: string; steps: string[]; command?: string; baseUrl?: string; apiKeyEnv?: string; docs?: string; adapter: string }> = {
+type AiConnectionRecipe = { title: string; steps: string[]; command?: string; installCommand?: string; loginCommand?: string; statusCommand?: string; baseUrl?: string; apiKeyEnv?: string; docs?: string; adapter: string; billing?: string; billingSettingsUrl?: string; strictPlanInstruction?: string; modelPlaceholder?: string; planBacked?: boolean; caveat?: string };
+const aiConnectionRecipes: Record<AiConnectionSettings["mode"], AiConnectionRecipe> = {
   manual: { title: "Templates only", steps: ["No account or key is required.", "Review and edit the exported run plan outside the app."], adapter: "No AI call is made." },
-  codex_cli: { title: "Codex CLI with ChatGPT", steps: ["Install the Codex CLI on this computer.", "Run codex once and choose Sign in with ChatGPT.", "Run codex --version in the same Windows account used by the local service.", "Install and test the local codex exec adapter."], command: "npm install -g @openai/codex", docs: "https://developers.openai.com/codex/cli", adapter: "The local service must invoke codex exec and validate structured output." },
-  claude_cli: { title: "Claude Code with Pro, Max, or Console", steps: ["Install Claude Code.", "Run claude and choose the matching subscription or Console login.", "Run claude doctor to verify the installation.", "Install and test the local non-interactive Claude adapter."], command: "npm install -g @anthropic-ai/claude-code", docs: "https://docs.anthropic.com/en/docs/claude-code/getting-started", adapter: "The local service must invoke Claude in print mode and validate structured output." },
+  codex_cli: { title: "ChatGPT plan via Codex CLI", steps: ["Install Codex CLI.", "Run codex login and choose Sign in with ChatGPT in the browser.", "Run the test below; it must report a ChatGPT-backed login."], installCommand: "npm install -g @openai/codex", loginCommand: "codex login", statusCommand: "codex login status", docs: "https://learn.chatgpt.com/docs/auth", adapter: "Bundled: invokes codex exec with structured output, read-only permissions, and no API-key override.", billing: "The backend accepts only ChatGPT auth, removes OPENAI_API_KEY and CODEX_API_KEY, and uses that account's Codex allowance or ChatGPT credits.", strictPlanInstruction: "Confirm you want usage limited to the allowance and account settings of the signed-in ChatGPT plan.", planBacked: true, modelPlaceholder: "Optional; use the Codex default" },
+  claude_cli: { title: "Claude plan via Claude Code", steps: ["Install Claude Code.", "Run claude and sign in with the Claude.ai account that owns Pro, Max, Team, or Enterprise.", "Run the test below; it must report Claude.ai subscription authentication."], installCommand: "npm install -g @anthropic-ai/claude-code@latest", loginCommand: "claude", statusCommand: "claude auth status --json", docs: "https://code.claude.com/docs/en/authentication", adapter: "Bundled: invokes Claude in non-interactive safe mode with tools disabled and validates structured output.", billing: "The backend accepts only Claude.ai subscription auth, strips API/cloud credentials, and uses the plan's noninteractive Agent SDK allowance.", strictPlanInstruction: "Confirm you want usage limited to the allowance and account settings of the signed-in Claude plan.", planBacked: true, modelPlaceholder: "Optional; use the Claude Code default" },
+  cursor_cli: { title: "Cursor plan via Cursor CLI", steps: ["Install Cursor CLI in a supported environment.", "Run cursor-agent login and complete the browser login for your Cursor account.", "Disable on-demand usage in the Cursor dashboard, then test the saved account login here."], installCommand: "curl https://cursor.com/install -fsS | bash", loginCommand: "cursor-agent login", statusCommand: "cursor-agent status", docs: "https://docs.cursor.com/en/cli/reference/authentication", adapter: "Bundled where Cursor CLI is available: invokes print mode from an isolated directory with project tools denied.", billing: "The backend uses browser account authentication and removes CURSOR_API_KEY. Cursor account-level on-demand billing is outside the CLI and must be disabled separately.", billingSettingsUrl: "https://cursor.com/dashboard/spending", strictPlanInstruction: "Confirm Cursor on-demand usage is disabled or capped at $0 in the Cursor dashboard.", planBacked: true, modelPlaceholder: "Optional; use the Cursor default", caveat: "Cursor officially supports its CLI on macOS, Linux, and Windows through WSL. A Windows-native backend cannot invoke a CLI installed only inside WSL." },
+  opencode_cli: { title: "OpenCode Go plan via OpenCode", steps: ["Install OpenCode.", "Run opencode, enter /connect, select OpenCode Go, and paste the key issued by the Go plan.", "Turn off Use balance in the Zen console, then test that Go and its model list are available."], installCommand: "npm install -g opencode-ai", loginCommand: "opencode", statusCommand: "opencode auth list", docs: "https://opencode.ai/docs/go/", adapter: "Bundled: invokes opencode run with all tools denied and restricts the model to the opencode-go provider.", billing: "OpenCode Go supplies a subscription key rather than browser OAuth. The backend permits only opencode-go models; Zen balance fallback must be disabled separately.", billingSettingsUrl: "https://opencode.ai/zen", strictPlanInstruction: "Confirm Use balance is off in OpenCode Zen so requests stop at the Go plan limit instead of using a Zen balance.", planBacked: true, modelPlaceholder: "Optional opencode-go/<model>; first available Go model is used", caveat: "The console can verify the Go credential and model namespace, but OpenCode does not expose the server-side Use balance switch through this CLI check." },
   ollama: { title: "Ollama local model", steps: ["Install and start Ollama.", "Pull the model entered above.", "Verify the local API responds.", "Install and test the Ollama generation adapter."], command: "ollama pull <model-name>", baseUrl: "http://127.0.0.1:11434/api", docs: "https://docs.ollama.com/api/introduction", adapter: "The local service must call /api/generate or /api/chat. Local access requires no API key." },
   openai_api: { title: "OpenAI API", steps: ["Create a project API key in the OpenAI platform.", "Set OPENAI_API_KEY in the environment that starts the local service.", "Restart the local service, select a model, and test the connection."], baseUrl: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY", docs: "https://platform.openai.com/docs/quickstart", adapter: "Requires an OpenAI Responses API adapter. ChatGPT subscription billing is separate from API billing." },
   anthropic_api: { title: "Anthropic API", steps: ["Create an API key in the Anthropic Console.", "Set ANTHROPIC_API_KEY in the environment that starts the local service.", "Restart the local service, select a Claude model, and test the connection."], baseUrl: "https://api.anthropic.com", apiKeyEnv: "ANTHROPIC_API_KEY", docs: "https://docs.anthropic.com/en/api/getting-started", adapter: "Requires an Anthropic Messages API adapter; this is not the OpenAI-compatible request format." },
@@ -185,6 +191,7 @@ export function App() {
     return safeBackendUrl(configured === LEGACY_BACKEND_URL ? DEFAULT_BACKEND_URL : configured);
   });
   const [aiConnection, setAiConnection] = useState<AiConnectionSettings>(() => loadAiConnection(defaultAiConnection));
+  const [aiConnectionCheck, setAiConnectionCheck] = useState<AiConnectionCheck | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationSettings>(() => loadIntegrationSettings(defaultIntegrationSettings));
   const [onboarding, setOnboarding] = useState<OnboardingState>(() => loadOnboardingState(defaultOnboardingState));
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -330,6 +337,10 @@ export function App() {
   useEffect(() => {
     saveJson(storageKeys.aiConnection, aiConnection);
   }, [aiConnection]);
+
+  useEffect(() => {
+    setAiConnectionCheck(null);
+  }, [aiConnection.controlMode, aiConnection.mode, aiConnection.baseUrl, aiConnection.apiKeyEnv]);
 
   useEffect(() => {
     saveJson(storageKeys.integrations, integrations);
@@ -553,12 +564,15 @@ export function App() {
 
   function loadSampleRows() {
     const now = new Date().toISOString();
+    const sampleProfile: ProfileKey = "customer_success";
     const sample: JobRow[] = [
-      sampleJob("sample-1", "data_analyst", "Example Analytics", "Data Analyst", "https://example.com/jobs/da-100", "DA-100", "applied", 3, now, ""),
-      sampleJob("sample-2", "business_analyst", "Example Systems", "Business Analyst", "https://example.com/jobs/ba-200", "BA-200", "sent", 3, now, "Already sent to recruiting team"),
-      sampleJob("sample-3", "data_analyst", "Northwind Data", "BI Analyst", "https://example.com/jobs/bi-300", "BI-300", "applied", 0, now, "No clean direct recruiting contacts found"),
-      sampleJob("sample-4", "business_analyst", "Contoso Ops", "Operations Analyst", "https://example.com/jobs/ops-400", "OPS-400", "applied", 2, now, "Below preferred contact target"),
+      sampleJob("sample-1", sampleProfile, "Demo Harbor", "Customer Success Operations Specialist", "https://jobs.example.invalid/customer-success/CS-1042", "CS-1042", "applied", 3, now, "Synthetic sample"),
+      sampleJob("sample-2", sampleProfile, "Example Works", "Customer Enablement Coordinator", "https://jobs.example.invalid/enablement/CE-2088", "CE-2088", "sent", 3, now, "Simulated outreach already sent"),
+      sampleJob("sample-3", sampleProfile, "Sample Northstar", "Implementation Operations Associate", "https://jobs.example.invalid/implementation/IO-3314", "IO-3314", "applied", 0, now, "Simulated no-contact exception"),
+      sampleJob("sample-4", sampleProfile, "Demo Harbor", "Customer Onboarding Specialist", "https://jobs.example.invalid/onboarding/CO-4471", "CO-4471", "interview", 2, now, "Simulated interview event"),
     ];
+    setProfiles((current) => current.some((item) => item.key === sampleProfile) ? current : [...current, { key: sampleProfile, label: "Customer Success", senderName: "Sample Candidate", senderEmail: "", resumeLabel: "", notes: "Synthetic public demonstration profile.", accent: "#f0b95e" }]);
+    setProfile(sampleProfile);
     setJobs(sample);
     setSelectedIds(new Set(["sample-1", "sample-3"]));
     setImportMeta({ fileName: "sample-applications.csv", sheetName: "Sample", warnings: [], importedSheets: ["Sample"] });
@@ -821,7 +835,7 @@ export function App() {
 
   async function generateDraftMessages(brief: string, selectedDrafts: MessageDraft[]) {
     if (storage.mode === "browser") throw new Error("In-app AI generation needs a configured local backend. Use Outside AI or Manual in browser-only mode.");
-    return generateMessages(backendUrl, { brief, drafts: selectedDrafts, maximum_words: writing.maximumWords });
+    return generateMessages(backendUrl, { brief, drafts: selectedDrafts, maximum_words: writing.maximumWords, ai_connection: aiConnection });
   }
 
   async function testExternalStorage() {
@@ -882,6 +896,22 @@ export function App() {
     pushConsole(`Backend health: ${result.status} - ${result.message}`);
   }
 
+  async function runAiConnectionCheck() {
+    const checking: AiConnectionCheck = { mode: aiConnection.mode, label: aiConnectionRecipes[aiConnection.mode].title, status: "checking", installed: false, authenticated: false, detail: "Checking the local CLI and its saved login without making a model request...", nextCommand: "", version: "", availableModels: [] };
+    setAiConnectionCheck(checking);
+    try {
+      const result = await checkAiConnection(backendUrl, aiConnection);
+      setAiConnectionCheck(result);
+      pushConsole(`AI connection: ${result.status} - ${result.detail}`);
+      return result;
+    } catch (error) {
+      const failed: AiConnectionCheck = { ...checking, status: "error", detail: error instanceof Error ? error.message : "AI connection check failed." };
+      setAiConnectionCheck(failed);
+      pushConsole(`AI connection check failed: ${failed.detail}`);
+      return failed;
+    }
+  }
+
   async function refreshBackendData() {
     const requests = await Promise.allSettled([
       fetchCrmCompanies(backendUrl), fetchRecoveryExceptions(backendUrl), fetchMailboxEvents(backendUrl),
@@ -901,6 +931,12 @@ export function App() {
 
   async function completeOnboarding(next: IntegrationSettings) {
     setIntegrations(next);
+    if (aiConnection.controlMode === "in_app" && storage.mode === "browser") throw new Error("Console-managed AI needs the local backend. Choose Embedded SQLite for the lightweight local setup, or use Outside AI with browser-only storage.");
+    if (aiConnection.controlMode === "in_app") {
+      const checked = aiConnectionCheck?.mode === aiConnection.mode && aiConnectionCheck.status === "ready" ? aiConnectionCheck : await runAiConnectionCheck();
+      if (checked.status !== "ready") throw new Error(`Finish the AI plan connection first: ${checked.detail}`);
+      if (aiConnectionRecipes[aiConnection.mode].planBacked && !aiConnection.strictPlanOnly) throw new Error("Confirm the strict plan-only billing guard before finishing setup.");
+    }
     if (storage.mode === "external") {
       if (!storage.externalAdapterUrl || !storage.externalSchemaReady) throw new Error("Enter the external database adapter URL and confirm its schema before finishing setup.");
       const external = await checkExternalStorageAdapter(storage.externalAdapterUrl);
@@ -1345,7 +1381,7 @@ export function App() {
           ) : rightTab === "stats" ? (
             <><PanelTitle icon={<ChartNoAxesCombined size={16} />} label="Status & Activity" /><StatsView dashboard={dashboard} /></>
           ) : rightTab === "setup" ? (
-            <><PanelTitle icon={<Settings size={16} />} label="Setup" /><SetupView status={setupStatus} health={backendHealth} backendUrl={backendUrl} profiles={profiles} aiConnection={aiConnection} integrations={integrations} storage={storage} storageStatus={externalStorageStatus} onStorageChange={setStorage} onStorageTest={() => void testExternalStorage()} onStoragePull={() => void pullExternalWorkspace()} onStoragePush={() => void pushExternalWorkspace()} onAiChange={setAiConnection} onOpenOnboarding={() => openOnboarding(0)} onCheck={() => { void runHealthCheck(); void refreshBackendData(); }} onExportIncident={() => void downloadIncidentReport(backendUrl)} /></>
+            <><PanelTitle icon={<Settings size={16} />} label="Setup" /><SetupView status={setupStatus} health={backendHealth} backendUrl={backendUrl} profiles={profiles} aiConnection={aiConnection} aiConnectionCheck={aiConnectionCheck} integrations={integrations} storage={storage} storageStatus={externalStorageStatus} onStorageChange={setStorage} onStorageTest={() => void testExternalStorage()} onStoragePull={() => void pullExternalWorkspace()} onStoragePush={() => void pushExternalWorkspace()} onAiChange={setAiConnection} onAiCheck={() => void runAiConnectionCheck()} onOpenOnboarding={() => openOnboarding(0)} onCheck={() => { void runHealthCheck(); void refreshBackendData(); if (aiConnection.controlMode === "in_app") void runAiConnectionCheck(); }} onExportIncident={() => void downloadIncidentReport(backendUrl)} /></>
           ) : (
             <>
               <PanelTitle icon={<Bug size={16} />} label="Potential Issues" />
@@ -1423,7 +1459,7 @@ export function App() {
           </section>
         </div>
       )}
-      {showOnboarding && <OnboardingWizard initialStep={onboardingEntryStep} initialSettings={integrations} profiles={profiles} aiConnection={aiConnection} backendUrl={backendUrl} storage={storage} onStorageChange={setStorage} onAiChange={setAiConnection} onBackendUrlChange={setBackendUrl} onManageProfiles={manageProfilesFromOnboarding} onClose={closeOnboarding} onComplete={completeOnboarding} />}
+      {showOnboarding && <OnboardingWizard initialStep={onboardingEntryStep} initialSettings={integrations} profiles={profiles} aiConnection={aiConnection} aiConnectionCheck={aiConnectionCheck} backendUrl={backendUrl} storage={storage} onStorageChange={setStorage} onAiChange={setAiConnection} onAiCheck={() => void runAiConnectionCheck()} onBackendUrlChange={setBackendUrl} onManageProfiles={manageProfilesFromOnboarding} onClose={closeOnboarding} onComplete={completeOnboarding} />}
     </main>
   );
 }
@@ -1471,6 +1507,7 @@ function SourceWorkspace({
       <header className="workspace-heading"><div><span className="eyebrow">Source of truth</span><h2>Application Data</h2><p>Connect one working file, validate its columns, and keep outreach status synchronized.</p></div><StatusPill state={source.syncState} label={source.syncState} /></header>
       <section className="source-band">
         <div className="source-identity"><FileSpreadsheet size={24} /><div><strong>{source.fileName || "No file connected"}</strong><span>{source.message}</span></div></div>
+        <div className={`data-privacy-note ${source.mode === "sample" ? "sample" : "private"}`}><ShieldAlert size={16} /><div><strong>{source.mode === "sample" ? "Synthetic public data" : source.mode === "none" ? "No private data loaded" : "Private local workspace"}</strong><span>{source.mode === "sample" ? "All companies, people, addresses, links, and activity are simulated. No provider can be called from this sample." : source.mode === "none" ? "The repository includes only the synthetic sample pack. Your own rows appear only after you import or link them." : "This filename and its rows came from this browser or your linked file. They are not embedded in the repository or public build."}</span></div></div>
         <div className="source-facts"><span>Mode<strong>{source.mode}</strong></span><span>Format<strong>{source.format}</strong></span><span>Rows<strong>{rows}</strong></span><span>Last sync<strong>{source.lastSyncedAt ? new Date(source.lastSyncedAt).toLocaleTimeString() : "never"}</strong></span></div>
         {importedSheets.length > 0 && <div className="imported-sheets"><strong>Application sheets</strong><span>{importedSheets.join(" / ")}</span></div>}
         <div className="source-actions">
@@ -1491,7 +1528,7 @@ function SourceWorkspace({
 
       <section className="source-band utility-band">
         <div><span className="eyebrow">Workspace utilities</span><h3>Backup and test data</h3></div>
-        <div className="source-actions"><button className="small-button" onClick={onSample}><RefreshCw size={15} /> Load sample</button><button className="small-button" onClick={onExportWorkspace}><Download size={15} /> Export workspace</button><button className="small-button" onClick={onImportWorkspace}><Upload size={15} /> Import workspace</button><button className="small-button danger" onClick={onClear}><Trash2 size={15} /> Clear</button></div>
+        <div className="source-actions"><button className="small-button" onClick={onSample}><RefreshCw size={15} /> Load synthetic sample</button><button className="small-button" onClick={onExportWorkspace}><Download size={15} /> Export workspace</button><button className="small-button" onClick={onImportWorkspace}><Upload size={15} /> Import workspace</button><button className="small-button danger" onClick={onClear}><Trash2 size={15} /> Clear</button></div>
       </section>
     </div>
   );
@@ -1626,15 +1663,17 @@ function StatsView({ dashboard }: { dashboard: DashboardData | null }) {
   return <div className="stats-view"><div className="stats-grid">{wanted.map((status) => <Metric key={status} label={status.replaceAll("_", " ")} value={String(metricCount(status))} />)}</div><div className="moving-average"><strong>Outreach moving average</strong><span>{dashboard.activity.dailyAverage7.toFixed(1)} / day (7d)</span><span>{dashboard.activity.dailyAverage30.toFixed(1)} / day (30d)</span></div><div className="provider-usage"><strong>Provider usage</strong>{dashboard.usage.map((item) => <span key={`${item.provider}-${item.operation}`}>{item.provider} / {item.operation}: {item.requests} requests, {item.credits} estimated credits</span>)}</div></div>;
 }
 
-function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection, backendUrl, storage, onStorageChange, onAiChange, onBackendUrlChange, onManageProfiles, onClose, onComplete }: {
+function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection, aiConnectionCheck, backendUrl, storage, onStorageChange, onAiChange, onAiCheck, onBackendUrlChange, onManageProfiles, onClose, onComplete }: {
   initialStep: number;
   initialSettings: IntegrationSettings;
   profiles: ProfileDefinition[];
   aiConnection: AiConnectionSettings;
+  aiConnectionCheck: AiConnectionCheck | null;
   backendUrl: string;
   storage: StorageSettings;
   onStorageChange: (value: StorageSettings) => void;
   onAiChange: (value: AiConnectionSettings) => void;
+  onAiCheck: () => void;
   onBackendUrlChange: (value: string) => void;
   onManageProfiles: (step: number, doNotPrompt: boolean, settings: IntegrationSettings) => void;
   onClose: (step: number, doNotPrompt: boolean, settings: IntegrationSettings) => void;
@@ -1653,6 +1692,10 @@ function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection
     ...(settings.fallbackEnrichment.enabled ? [{ role: "fallback contact discovery", selection: settings.fallbackEnrichment, options: enrichmentOptions, update: (value: IntegrationSettings["primaryEnrichment"]) => setSettings({ ...settings, fallbackEnrichment: value }) }] : []),
     { role: "email, drafts, and replies", selection: settings.mailbox, options: mailboxOptions, update: (value: IntegrationSettings["primaryEnrichment"]) => setSettings({ ...settings, mailbox: value }) },
   ];
+  const activeAiRecipe = aiConnectionRecipes[aiConnection.mode];
+  const activeAiCheck = aiConnectionCheck?.mode === aiConnection.mode ? aiConnectionCheck : null;
+  const aiLoginLabel = activeAiCheck?.status === "ready" ? "Verified" : activeAiCheck?.status === "checking" ? "Checking" : activeAiCheck ? "Needs attention" : "Not tested";
+  const moveToStep = (nextStep: number) => { setError(""); setStep(Math.min(4, Math.max(0, nextStep))); };
   async function finish() {
     setSaving(true); setError("");
     try { await onComplete(settings); }
@@ -1673,6 +1716,8 @@ function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection
     }
   }
   const chooseControlMode = (controlMode: AiControlMode) => {
+    setError("");
+    if (controlMode === "in_app" && storage.mode === "browser") onStorageChange({ ...storage, mode: "sqlite" });
     if (controlMode === "in_app" && aiConnection.mode === "manual") {
       const preset = aiConnectionRecipes.codex_cli;
       onAiChange({ ...aiConnection, controlMode, mode: "codex_cli", baseUrl: preset.baseUrl ?? "", apiKeyEnv: preset.apiKeyEnv ?? "" });
@@ -1682,7 +1727,7 @@ function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection
     <div className="modal-backdrop onboarding-backdrop" role="presentation">
       <section className="onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
         <header><div><span className="eyebrow">Initial setup</span><h2 id="onboarding-title">Configure Outreach Console</h2></div><button className="icon-button" title="Save progress and close" onClick={() => onClose(step, doNotPrompt, settings)}><X size={18} /></button></header>
-        <nav className="onboarding-progress" aria-label="Setup progress">{["Foundation", "Providers", "Connections", "Storage", "Review"].map((label, index) => <button key={label} className={index === step ? "active" : index < step ? "done" : ""} onClick={() => setStep(index)}><span>{index < step ? <Check size={13} /> : index + 1}</span>{label}</button>)}</nav>
+        <nav className="onboarding-progress" aria-label="Setup progress">{["Foundation", "Providers", "Connections", "Storage", "Review"].map((label, index) => <button key={label} className={index === step ? "active" : index < step ? "done" : ""} onClick={() => moveToStep(index)}><span>{index < step ? <Check size={13} /> : index + 1}</span>{label}</button>)}</nav>
         <div className="onboarding-content">
           {step === 0 && <section className="foundation-step">
             <div><h3>How will AI operate this workflow?</h3><p>This choice decides where provider connections live and which checks the console can perform.</p></div>
@@ -1692,7 +1737,7 @@ function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection
               <button className={aiConnection.controlMode === "templates_only" ? "active" : ""} onClick={() => chooseControlMode("templates_only")}><FileSpreadsheet size={18} /><span><strong>Templates only</strong><small>Prepare queues and drafts without an LLM connection.</small></span></button>
             </div>
             {aiConnection.controlMode === "external_operator" && <div className="ownership-note"><strong>Externally managed</strong><span>The outside AI must be able to reach this console and every provider it is expected to use. Give it the operator guide so it follows the selected ownership mode and does not duplicate provider calls or sends.</span><a href="/AI_OPERATOR_GUIDE.md" target="_blank" rel="noreferrer">Open AI operator guide</a></div>}
-            {aiConnection.controlMode === "in_app" && <InlineAiConfiguration value={aiConnection} onChange={onAiChange} />}
+            {aiConnection.controlMode === "in_app" && <InlineAiConfiguration value={aiConnection} check={aiConnectionCheck} onChange={onAiChange} onCheck={onAiCheck} />}
             {aiConnection.controlMode === "templates_only" && <div className="ownership-note"><strong>No AI connection required</strong><span>Contact providers and mailbox adapters can still run locally, but personalized writing remains template-driven.</span></div>}
             <div className="foundation-grid">
               <section className="foundation-card"><header><div><span className="eyebrow">Identity and routing</span><h4>Profiles</h4></div><button className="small-button compact" onClick={() => onManageProfiles(step, doNotPrompt, settings)}><Settings size={14} /> Manage</button></header><div className="foundation-profiles">{profiles.length ? profiles.map((item) => <button key={item.key} onClick={() => onManageProfiles(step, doNotPrompt, settings)}><strong>{item.label}</strong><small>{item.senderEmail || item.senderName || "Sender not configured"}</small><span>{item.resumeLabel || "Resume not configured"}</span></button>) : <button onClick={() => onManageProfiles(step, doNotPrompt, settings)}><strong>Add a profile</strong><small>A sender and resume are required for local operation.</small></button>}</div></section>
@@ -1701,23 +1746,70 @@ function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection
           </section>}
           {step === 1 && <section className="provider-step"><h3>Choose operational providers</h3><p>A provider can be owned by the outside AI or by this console. The next step gives the correct connection path for the AI mode selected on Foundation.</p><ProviderSelect label="Primary contact discovery" selection={settings.primaryEnrichment} options={enrichmentOptions} onChange={(value) => setSettings({ ...settings, primaryEnrichment: value })} /><label className="toggle-row"><input type="checkbox" checked={settings.fallbackEnrichment.enabled} onChange={(event) => setSettings({ ...settings, fallbackEnrichment: event.target.checked ? { ...settings.fallbackEnrichment, enabled: true, providerId: settings.fallbackEnrichment.providerId === "none" ? "skrapp" : settings.fallbackEnrichment.providerId, label: settings.fallbackEnrichment.providerId === "none" ? "Skrapp" : settings.fallbackEnrichment.label } : { ...selectIntegration("none", enrichmentOptions), enabled: false } })} /><span><strong>Use a fallback contact provider</strong><small>Disable this if one provider or manual research is enough.</small></span></label>{settings.fallbackEnrichment.enabled && <ProviderSelect label="Fallback contact discovery" selection={settings.fallbackEnrichment} options={enrichmentOptions.filter((item) => item.id !== "none")} onChange={(value) => setSettings({ ...settings, fallbackEnrichment: value })} />}<ProviderSelect label="Email, drafts, and replies" selection={settings.mailbox} options={mailboxOptions} onChange={(value) => setSettings({ ...settings, mailbox: value })} /></section>}
           {step === 2 && <section className="connection-step"><h3>{aiConnection.controlMode === "external_operator" ? "Connect providers to the outside AI" : "Connect providers to the local console"}</h3><p>{aiConnection.controlMode === "external_operator" ? "Use existing connectors or official MCP servers in the AI environment. Installing duplicate adapters inside this console is optional." : "Included adapters remain lightweight. Other providers require a small local adapter that follows the documented contract."}</p><div className="connection-list">{connections.map((item) => <ConnectionCard key={item.role} role={item.role} selection={item.selection} options={item.options} controlMode={aiConnection.controlMode} copied={copiedProvider === item.selection.providerId} onChange={item.update} onCopy={(option) => void copyAdapterPrompt(option, item.role)} />)}</div>{error && <div className="wizard-error"><AlertTriangle size={15} />{error}</div>}<div className="connection-value"><span>Local service</span><code>{backendUrl || "Not configured"}</code></div></section>}
-          {step === 3 && <StorageSetup value={storage} onChange={onStorageChange} />}
-          {step === 4 && <section className="review-step"><h3>Review and verify setup</h3><div className="review-grid"><span>AI ownership<strong>{controlModeLabel(aiConnection.controlMode)}</strong></span><span>Profiles<strong>{profiles.length || "None"}</strong></span><span>Storage<strong>{storage.mode === "browser" ? "Browser only" : storage.mode === "sqlite" ? "Embedded SQLite" : `Existing ${storage.externalDialect}`}</strong></span><span>Local service<strong>{storage.mode === "browser" ? "Optional" : backendUrl}</strong></span><span>Primary contact discovery<strong>{settings.primaryEnrichment.label}</strong></span><span>Fallback<strong>{settings.fallbackEnrichment.enabled ? settings.fallbackEnrichment.label : "Disabled"}</strong></span><span>Email service<strong>{settings.mailbox.label}</strong></span></div><div className="inline-note"><ShieldAlert size={15} /> {storage.mode === "browser" ? "Browser-only mode can finish without a local service. Provider actions, CRM, mailbox ingestion, and recovery automation stay off." : aiConnection.controlMode === "external_operator" ? "The console verifies its local service; your outside AI is responsible for verifying its own provider connectors." : "Setup will remain incomplete until local adapters, sender routing, and resumes pass."}</div>{error && <div className="wizard-error"><AlertTriangle size={15} />{error}</div>}</section>}
+          {step === 3 && <><StorageSetup value={storage} onChange={onStorageChange} />{aiConnection.controlMode === "in_app" && storage.mode === "browser" && <div className="wizard-error"><AlertTriangle size={15} />Console-managed AI needs the lightweight local service. Choose Embedded SQLite, or switch Foundation to Outside AI or Templates only.</div>}</>}
+          {step === 4 && <section className="review-step">
+            <h3>Review and verify setup</h3>
+            <div className="review-grid">
+              <span>AI ownership<strong>{controlModeLabel(aiConnection.controlMode)}</strong></span>
+              {aiConnection.controlMode === "in_app" && <><span>AI connection<strong>{activeAiRecipe.title}</strong></span><span>Plan login<strong>{aiLoginLabel}</strong></span><span>Plan-only guard<strong>{activeAiRecipe.planBacked ? aiConnection.strictPlanOnly ? "Confirmed" : "Not confirmed" : "Not applicable"}</strong></span></>}
+              <span>Profiles<strong>{profiles.length || "None"}</strong></span>
+              <span>Storage<strong>{storage.mode === "browser" ? "Browser only" : storage.mode === "sqlite" ? "Embedded SQLite" : `Existing ${storage.externalDialect}`}</strong></span>
+              <span>Local service<strong>{storage.mode === "browser" ? aiConnection.controlMode === "in_app" ? "Required; choose SQLite" : "Optional" : backendUrl}</strong></span>
+              <span>Primary contact discovery<strong>{settings.primaryEnrichment.label}</strong></span>
+              <span>Fallback<strong>{settings.fallbackEnrichment.enabled ? settings.fallbackEnrichment.label : "Disabled"}</strong></span>
+              <span>Email service<strong>{settings.mailbox.label}</strong></span>
+            </div>
+            {aiConnection.controlMode === "in_app" && <div className={`review-ai-check ${activeAiCheck?.status === "ready" ? "ready" : activeAiCheck ? "error" : ""}`}><div><strong>{aiLoginLabel}</strong><span>{activeAiCheck?.detail ?? "Verify the selected plan login before finishing setup."}</span></div><button type="button" className="small-button" disabled={activeAiCheck?.status === "checking"} onClick={onAiCheck}><RefreshCw size={14} />{activeAiCheck?.status === "checking" ? "Checking..." : "Verify plan login"}</button></div>}
+            <div className="inline-note"><ShieldAlert size={15} /> {aiConnection.controlMode === "in_app" && storage.mode === "browser" ? "Console-managed AI needs the lightweight local service. Go back to Storage and choose Embedded SQLite before finishing." : storage.mode === "browser" ? "Browser-only mode can finish without a local service. Provider actions, CRM, mailbox ingestion, and recovery automation stay off." : aiConnection.controlMode === "external_operator" ? "The console verifies its local service; your outside AI is responsible for verifying its own provider connectors." : "Setup will remain incomplete until the plan login, billing guard, local adapters, sender routing, and resumes pass."}</div>
+            {error && <div className="wizard-error"><AlertTriangle size={15} />{error}</div>}
+          </section>}
         </div>
-        <footer><label className="do-not-prompt"><input type="checkbox" checked={doNotPrompt} onChange={(event) => setDoNotPrompt(event.target.checked)} /> Do not open setup automatically again</label><div><button className="ghost-button" disabled={step === 0 || saving} onClick={() => setStep((value) => value - 1)}>Back</button>{step < 4 ? <button className="launch-button" onClick={() => setStep((value) => value + 1)}>Continue</button> : <button className="launch-button" disabled={saving || !profiles.length} onClick={() => void finish()}>{saving ? "Verifying..." : "Save and verify setup"}</button>}</div></footer>
+        <footer><label className="do-not-prompt"><input type="checkbox" checked={doNotPrompt} onChange={(event) => setDoNotPrompt(event.target.checked)} /> Do not open setup automatically again</label><div><button className="ghost-button" disabled={step === 0 || saving} onClick={() => moveToStep(step - 1)}>Back</button>{step < 4 ? <button className="launch-button" onClick={() => moveToStep(step + 1)}>Continue</button> : <button className="launch-button" disabled={saving || !profiles.length} onClick={() => void finish()}>{saving ? "Verifying..." : "Save and verify setup"}</button>}</div></footer>
       </section>
     </div>
   );
 }
 
-function InlineAiConfiguration({ value, onChange }: { value: AiConnectionSettings; onChange: (value: AiConnectionSettings) => void }) {
+function InlineAiConfiguration({ value, check, onChange, onCheck }: { value: AiConnectionSettings; check: AiConnectionCheck | null; onChange: (value: AiConnectionSettings) => void; onCheck: () => void }) {
   const recipe = aiConnectionRecipes[value.mode];
   const apiMode = value.mode.endsWith("_api") || value.mode === "openai_compatible";
+  const planMode = recipe.planBacked === true;
+  const activeCheck = check?.mode === value.mode ? check : null;
+  const [copiedCommand, setCopiedCommand] = useState("");
   const changeMode = (mode: AiConnectionSettings["mode"]) => {
     const preset = aiConnectionRecipes[mode];
-    onChange({ ...value, mode, baseUrl: preset.baseUrl ?? "", apiKeyEnv: preset.apiKeyEnv ?? "" });
+    onChange({ ...value, mode, baseUrl: preset.baseUrl ?? "", apiKeyEnv: preset.apiKeyEnv ?? "", strictPlanOnly: false });
   };
-  return <div className="inline-ai-config"><label>AI connection<select aria-label="Initial AI connection" value={value.mode} onChange={(event) => changeMode(event.target.value as AiConnectionSettings["mode"])}><optgroup label="Subscription or local"><option value="codex_cli">Codex CLI with ChatGPT</option><option value="claude_cli">Claude Code with Pro/Max</option><option value="ollama">Ollama local model</option></optgroup><optgroup label="API"><option value="openai_api">OpenAI API</option><option value="anthropic_api">Anthropic API</option><option value="gemini_api">Google Gemini API</option><option value="groq_api">Groq API</option><option value="openrouter_api">OpenRouter API</option><option value="openai_compatible">Other OpenAI-compatible API</option></optgroup></select></label><label>Model<input value={value.model} onChange={(event) => onChange({ ...value, model: event.target.value })} placeholder="Provider model ID" /></label>{(value.mode === "ollama" || apiMode) && <label>Base URL<input value={value.baseUrl} onChange={(event) => onChange({ ...value, baseUrl: event.target.value })} placeholder={recipe.baseUrl} /></label>}{apiMode && <label>API key environment variable<input value={value.apiKeyEnv} onChange={(event) => onChange({ ...value, apiKeyEnv: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })} /></label>}<small>{recipe.adapter}</small></div>;
+  async function copyCommand(label: string, command: string) {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedCommand(label);
+      window.setTimeout(() => setCopiedCommand(""), 1500);
+    } catch {
+      setCopiedCommand("");
+    }
+  }
+  const statusState = activeCheck?.status === "ready" ? "ready" : activeCheck?.status === "checking" ? "idle" : activeCheck ? "error" : "setup";
+  return <div className="inline-ai-config">
+    <label>AI connection<select aria-label="Initial AI connection" value={value.mode} onChange={(event) => changeMode(event.target.value as AiConnectionSettings["mode"])}><optgroup label="Use an existing plan"><option value="codex_cli">ChatGPT plan / Codex CLI</option><option value="claude_cli">Claude plan / Claude Code</option><option value="cursor_cli">Cursor plan / Cursor CLI</option><option value="opencode_cli">OpenCode Go plan</option></optgroup><optgroup label="Local model"><option value="ollama">Ollama local model</option></optgroup><optgroup label="Separate API billing"><option value="openai_api">OpenAI API</option><option value="anthropic_api">Anthropic API</option><option value="gemini_api">Google Gemini API</option><option value="groq_api">Groq API</option><option value="openrouter_api">OpenRouter API</option><option value="openai_compatible">Other OpenAI-compatible API</option></optgroup></select></label>
+    <label>{planMode ? "Model (optional)" : "Model"}<input list={value.mode === "opencode_cli" ? "opencode-go-models" : undefined} value={value.model} onChange={(event) => onChange({ ...value, model: event.target.value })} placeholder={recipe.modelPlaceholder ?? "Provider model ID"} /></label>
+    {value.mode === "opencode_cli" && <datalist id="opencode-go-models">{(activeCheck?.availableModels ?? []).map((model) => <option key={model} value={model} />)}</datalist>}
+    {(value.mode === "ollama" || apiMode) && <label>Base URL<input value={value.baseUrl} onChange={(event) => onChange({ ...value, baseUrl: event.target.value })} placeholder={recipe.baseUrl} /></label>}
+    {apiMode && <label>API key environment variable<input value={value.apiKeyEnv} onChange={(event) => onChange({ ...value, apiKeyEnv: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })} /></label>}
+    {planMode && <div className="cli-login-definition"><Terminal size={15} /><div><strong>What "signed in through the CLI" means</strong><span>The provider's command-line app is installed for the same operating-system account that runs this backend. You complete its browser or device login once, and the CLI saves the account credential in its own local credential store. This console invokes that signed-in CLI; it does not ask for or store your model API key.</span></div></div>}
+    {planMode && <div className="plan-login-assurance"><Check size={15} /><div><strong>Existing plan path; separate API credentials are blocked</strong><span>{recipe.billing}</span></div></div>}
+    <div className="ai-connection-guide">
+      <div className="ai-guide-heading"><div><strong>{recipe.title}</strong><span>{recipe.adapter}</span></div>{recipe.docs && <a href={recipe.docs} target="_blank" rel="noreferrer">Official setup</a>}</div>
+      <ol>{recipe.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+      {recipe.caveat && <div className="ai-caveat"><AlertTriangle size={14} /><span>{recipe.caveat}</span></div>}
+      {planMode && <div className="ai-command-list">
+        {[{ label: "Install", command: recipe.installCommand }, { label: "Sign in", command: recipe.loginCommand }, { label: "Check", command: recipe.statusCommand }].filter((item): item is { label: string; command: string } => Boolean(item.command)).map((item) => <div key={item.label}><span>{item.label}</span><code>{item.command}</code><button type="button" className="icon-button" title={`Copy ${item.label.toLowerCase()} command`} onClick={() => void copyCommand(item.label, item.command)}>{copiedCommand === item.label ? <Check size={14} /> : <Copy size={14} />}</button></div>)}
+      </div>}
+      {planMode && <label className="strict-plan-check"><input type="checkbox" checked={value.strictPlanOnly} onChange={(event) => onChange({ ...value, strictPlanOnly: event.target.checked })} /><span><strong>Strict plan-only guard</strong><small>{recipe.strictPlanInstruction}</small>{recipe.billingSettingsUrl && <a href={recipe.billingSettingsUrl} target="_blank" rel="noreferrer">Open billing setting</a>}</span></label>}
+      <div className="ai-test-row"><button type="button" className="small-button" disabled={activeCheck?.status === "checking"} onClick={onCheck}><RefreshCw size={14} /> {activeCheck?.status === "checking" ? "Checking..." : planMode ? "Test plan login" : "Test connection"}</button><StatusPill state={statusState} label={activeCheck?.status.replaceAll("_", " ") ?? "not tested"} />{activeCheck?.version && <code>{activeCheck.version}</code>}</div>
+      {activeCheck && <small className={activeCheck.status === "ready" ? "ai-check-detail ready" : "ai-check-detail"}>{activeCheck.detail}</small>}
+    </div>
+  </div>;
 }
 
 function ConnectionCard({ role, selection, options, controlMode, copied, onChange, onCopy }: { role: string; selection: IntegrationSettings["primaryEnrichment"]; options: IntegrationOption[]; controlMode: AiControlMode; copied: boolean; onChange: (value: IntegrationSettings["primaryEnrichment"]) => void; onCopy: (option: IntegrationOption) => void }) {
@@ -1740,12 +1832,13 @@ function ProviderSelect({ label, selection, options, onChange }: { label: string
   return <div className="provider-selector"><label><span>{label}</span><select aria-label={label} value={selection.providerId} onChange={(event) => onChange(selectIntegration(event.target.value, options))}>{options.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>{custom && <label><span>Display name</span><input aria-label={`${label} display name`} value={selection.label} onChange={(event) => onChange({ ...selection, label: event.target.value || option.label })} placeholder="Provider name" /></label>}<small>{option.adapter === "built_in" ? "Adapter included; credentials and helper configuration are still required." : option.adapter === "disabled" ? option.setup : "External adapter required before this can run."}</small></div>;
 }
 
-function SetupView({ status, health, backendUrl, profiles, aiConnection, integrations, storage, storageStatus, onStorageChange, onStorageTest, onStoragePull, onStoragePush, onAiChange, onOpenOnboarding, onCheck, onExportIncident }: {
+function SetupView({ status, health, backendUrl, profiles, aiConnection, aiConnectionCheck, integrations, storage, storageStatus, onStorageChange, onStorageTest, onStoragePull, onStoragePush, onAiChange, onAiCheck, onOpenOnboarding, onCheck, onExportIncident }: {
   status: SetupStatus | null;
   health: BackendHealth;
   backendUrl: string;
   profiles: ProfileDefinition[];
   aiConnection: AiConnectionSettings;
+  aiConnectionCheck: AiConnectionCheck | null;
   integrations: IntegrationSettings;
   storage: StorageSettings;
   storageStatus: string;
@@ -1754,11 +1847,12 @@ function SetupView({ status, health, backendUrl, profiles, aiConnection, integra
   onStoragePull: () => void;
   onStoragePush: () => void;
   onAiChange: (value: AiConnectionSettings) => void;
+  onAiCheck: () => void;
   onOpenOnboarding: () => void;
   onCheck: () => void;
   onExportIncident: () => void;
 }) {
-  const aiReady = aiConnection.controlMode !== "in_app" || status?.providerStatus.ai === "configured";
+  const aiReady = aiConnection.controlMode !== "in_app" || (aiConnectionCheck?.mode === aiConnection.mode && aiConnectionCheck.status === "ready");
   const providerConnections = status?.providers ?? [
     { role: "primary_enrichment" as const, providerId: integrations.primaryEnrichment.providerId, label: integrations.primaryEnrichment.label, status: "unknown", detail: "Run the connection test to verify this provider." },
     { role: "fallback_enrichment" as const, providerId: integrations.fallbackEnrichment.providerId, label: integrations.fallbackEnrichment.label, status: integrations.fallbackEnrichment.enabled ? "unknown" : "disabled", detail: integrations.fallbackEnrichment.enabled ? "Run the connection test to verify this provider." : "No fallback provider selected." },
@@ -1786,7 +1880,7 @@ function SetupView({ status, health, backendUrl, profiles, aiConnection, integra
           const mode = controlMode === "templates_only" ? "manual" : controlMode === "in_app" && aiConnection.mode === "manual" ? "codex_cli" : aiConnection.mode;
           onAiChange({ ...aiConnection, controlMode, mode });
         }}><option value="external_operator">Outside AI operates the console</option><option value="in_app">Console invokes an AI</option><option value="templates_only">Templates only</option></select></label>
-        {aiConnection.controlMode === "external_operator" ? <div className="ownership-note"><strong>Connections live in the outside AI environment</strong><span>That AI should use this console's MCP plus its own authorized provider connectors. It must not duplicate sends through both paths.</span><a href="/AI_OPERATOR_GUIDE.md" target="_blank" rel="noreferrer">AI operator guide</a></div> : aiConnection.controlMode === "in_app" ? <InlineAiConfiguration value={aiConnection} onChange={onAiChange} /> : <div className="inline-note">Templates-only mode builds queues and plans without calling an LLM.</div>}
+        {aiConnection.controlMode === "external_operator" ? <div className="ownership-note"><strong>Connections live in the outside AI environment</strong><span>That AI should use this console's MCP plus its own authorized provider connectors. A ChatGPT, Claude, Cursor, or OpenCode subscription can stay signed in there; no model API key belongs in this console.</span><a href="/AI_OPERATOR_GUIDE.md" target="_blank" rel="noreferrer">AI operator guide</a></div> : aiConnection.controlMode === "in_app" ? <InlineAiConfiguration value={aiConnection} check={aiConnectionCheck} onChange={onAiChange} onCheck={onAiCheck} /> : <div className="inline-note">Templates-only mode builds queues and plans without calling an LLM.</div>}
       </section>
 
       <section className="system-checks">

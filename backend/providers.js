@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname, extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
+import { checkPlanAiConnection, generatePlanAiMessages, isPlanCliMode, normalizeAiConnection } from "./ai-cli.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -20,7 +21,8 @@ export function createProviders(config) {
         enrichment: descriptions.find((item) => item.role === "primary_enrichment")?.status ?? "missing",
         fallback: descriptions.find((item) => item.role === "fallback_enrichment")?.status ?? "disabled",
         mailbox: descriptions.find((item) => item.role === "mailbox")?.status ?? "missing",
-        writing: writingScript && existsSync(writingScript) ? "configured" : "adapter-required",
+        writing: writingScript && existsSync(writingScript) ? "configured-helper" : "bundled-plan-cli",
+        writingCustom: writingScript && existsSync(writingScript) ? "configured" : "adapter-required",
       };
     },
     describe() {
@@ -49,6 +51,14 @@ export function createProviders(config) {
         status: providerApi.status(),
         providers: providerApi.describe(),
       };
+    },
+    async checkAi(input) {
+      const connection = normalizeAiConnection(input);
+      if (isPlanCliMode(connection.mode)) return checkPlanAiConnection(connection);
+      if (writingScript && existsSync(writingScript)) {
+        return { mode: connection.mode, label: "Private writing adapter", status: "ready", installed: true, authenticated: false, detail: "A private writing adapter is configured. Its provider authentication remains in that helper.", nextCommand: "", version: "", availableModels: [] };
+      }
+      return { mode: connection.mode, label: connection.mode, status: "adapter_required", installed: false, authenticated: false, detail: "This connection requires OUTREACH_WRITING_HELPER. No provider call was made.", nextCommand: "", version: "", availableModels: [] };
     },
     async enrich(input) {
       if (config.publicSampleMode) throw providerError("Provider calls are disabled in public sample mode");
@@ -112,7 +122,9 @@ export function createProviders(config) {
     },
     async generateMessages(input) {
       if (config.publicSampleMode) throw providerError("AI provider calls are disabled in public sample mode");
-      if (!existsSync(writingScript)) throw providerError("Writing helper is not configured");
+      const connection = normalizeAiConnection(input.ai_connection);
+      if (isPlanCliMode(connection.mode)) return generatePlanAiMessages(connection, input);
+      if (!existsSync(writingScript)) throw providerError("Writing helper is not configured for this AI connection");
       const workDir = resolve("data/provider-work", randomUUID());
       mkdirSync(workDir, { recursive: true });
       const inputPath = join(workDir, "writing-request.json");

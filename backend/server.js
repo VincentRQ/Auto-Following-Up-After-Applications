@@ -6,13 +6,16 @@ import { loadConfig } from "./config.js";
 import { createProviders } from "./providers.js";
 
 export function createOutreachServer({
-  databasePath = process.env.OUTREACH_DATABASE ?? "data/outreach.sqlite",
   providers = createProviders(loadConfig()),
+  databasePath,
   allowedOrigins = parseAllowedOrigins(process.env.OUTREACH_ALLOWED_ORIGINS),
   maximumBodyBytes = Number(process.env.OUTREACH_MAX_BODY_BYTES ?? 2 * 1024 * 1024),
 } = {}) {
   maximumBodyBytes = Number.isFinite(maximumBodyBytes) ? Math.max(1024, Math.min(maximumBodyBytes, 20 * 1024 * 1024)) : 2 * 1024 * 1024;
-  const db = openDatabase(databasePath);
+  const resolvedDatabasePath = providers?.publicSampleMode === true
+    ? ":memory:"
+    : databasePath ?? process.env.OUTREACH_DATABASE ?? "data/outreach.sqlite";
+  const db = openDatabase(resolvedDatabasePath);
   const service = createService(db, providers);
   const server = createServer(async (request, response) => {
     const origin = String(request.headers.origin ?? "");
@@ -32,6 +35,7 @@ export function createOutreachServer({
       if (request.method === "POST" && url.pathname === "/api/setup/integrations") return send(response, 200, service.configureIntegrations(await body(request, maximumBodyBytes)));
       if (request.method === "GET" && url.pathname === "/api/writing/drafts") return send(response, 200, { drafts: service.listMessageDrafts(url.searchParams.get("profile") ?? "") });
       if (request.method === "POST" && url.pathname === "/api/writing/drafts") return send(response, 201, service.saveMessageDraft(await body(request, maximumBodyBytes)));
+      if (request.method === "POST" && url.pathname === "/api/writing/check") return send(response, 200, await service.checkAiConnection(await body(request, maximumBodyBytes)));
       if (request.method === "POST" && url.pathname === "/api/writing/generate") return send(response, 200, await service.generateMessages(await body(request, maximumBodyBytes)));
       if (request.method === "GET" && url.pathname === "/api/crm/companies") return send(response, 200, { companies: service.listCompanies() });
       const companyMatch = url.pathname.match(/^\/api\/crm\/companies\/(\d+)$/);

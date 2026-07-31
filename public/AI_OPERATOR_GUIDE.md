@@ -6,8 +6,8 @@ same provider.
 
 ## External operator
 
-Use this mode when Codex, Claude, or another agent surrounds the console and already
-has access to contact, mailbox, and file connectors.
+Use this mode when Codex, Claude, Cursor, OpenCode, or another agent surrounds the
+console and already has access to contact, mailbox, and file connectors.
 
 - Treat the console backend and its company-centric history as the system of record.
 - Use the console MCP for queue, company, job, exception, and activity operations.
@@ -25,6 +25,8 @@ has access to contact, mailbox, and file connectors.
 Use this mode when the console invokes a configured CLI or API adapter.
 
 - Local backend adapters own provider and mailbox calls.
+- ChatGPT/Codex, Claude, Cursor, and OpenCode Go plan modes use the bundled CLI
+  bridge and the account already signed into that CLI.
 - An outside AI may inspect status, but must not repeat enrichment or sending.
 - API keys belong in environment variables or provider credential stores, never in
   imported files, prompts, logs, or source control.

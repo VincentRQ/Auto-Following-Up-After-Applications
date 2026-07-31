@@ -71,10 +71,11 @@
       "required": ["controlMode", "mode", "model", "baseUrl", "apiKeyEnv"],
       "properties": {
         "controlMode": { "enum": ["external_operator", "in_app", "templates_only"] },
-        "mode": { "enum": ["codex_cli", "claude_cli", "ollama", "openai_api", "anthropic_api", "gemini_api", "groq_api", "openrouter_api", "openai_compatible", "manual"] },
+        "mode": { "enum": ["codex_cli", "claude_cli", "cursor_cli", "opencode_cli", "ollama", "openai_api", "anthropic_api", "gemini_api", "groq_api", "openrouter_api", "openai_compatible", "manual"] },
         "model": { "type": "string", "maxLength": 500 },
         "baseUrl": { "type": "string", "maxLength": 2000 },
-        "apiKeyEnv": { "type": "string", "pattern": "^[A-Z0-9_]*$", "maxLength": 100 }
+        "apiKeyEnv": { "type": "string", "pattern": "^[A-Z0-9_]*$", "maxLength": 100 },
+        "strictPlanOnly": { "type": "boolean", "default": false }
       }
     },
     "integrations": {

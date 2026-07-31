@@ -9,6 +9,11 @@ data/*.sqlite.bak
 data/backups/
 data/local-config.json
 data/provider-work/
+*.xls
+*.xlsx
+*.xlsm
+*.xlsb
+*.ods
 .env
 .env.*
 !.env.example

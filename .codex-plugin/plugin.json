@@ -1,6 +1,6 @@
 {
   "name": "outreach-console-mcp",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Codex plugin for a local job-application outreach pipeline with confirmation-gated provider actions.",
   "author": {
     "name": "Outreach Console contributors"

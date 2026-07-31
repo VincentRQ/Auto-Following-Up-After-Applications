@@ -1,4 +1,5 @@
 profile,company,job_title,job_url,job_id,source,status,applied_at,last_worked_at,sent_at,contacts_found,notes
-DA,Example Analytics,Data Analyst,https://example.com/jobs/da-100,DA-100,Hiring Cafe,applied,2026-07-10,2026-07-10,,3,Tier 1 recruiter contacts found
-BA,Example Systems,Business Analyst,https://example.com/jobs/ba-200,BA-200,Greenhouse,sent,2026-07-09,2026-07-09,2026-07-10,3,Sent to recruiting team
-DA,Northwind Data,BI Analyst,https://example.com/jobs/bi-300,BI-300,Ashby,applied,2026-07-08,2026-07-10,,0,No clean direct recruiting contacts found
+Customer Success,Demo Harbor,Customer Success Operations Specialist,https://jobs.example.invalid/customer-success/CS-1042,CS-1042,Greenhouse,applied,2026-07-10,2026-07-10,,3,Three simulated recruiting contacts available
+Customer Success,Example Works,Customer Enablement Coordinator,https://jobs.example.invalid/enablement/CE-2088,CE-2088,Ashby,sent,2026-07-09,2026-07-09,2026-07-10,3,Simulated outreach already sent
+Customer Success,Sample Northstar,Implementation Operations Associate,https://jobs.example.invalid/implementation/IO-3314,IO-3314,Workday,applied,2026-07-08,2026-07-10,,0,Simulated no-contact exception
+Customer Success,Demo Harbor,Customer Onboarding Specialist,https://jobs.example.invalid/onboarding/CO-4471,CO-4471,Lever,interview,2026-07-07,2026-07-10,2026-07-08,2,Simulated interview event

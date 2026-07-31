@@ -19,7 +19,7 @@ const failures = [];
 
 const riskyExtensions = new Set([
   ".db", ".doc", ".docx", ".eml", ".msg", ".ost", ".pdf", ".pst",
-  ".sqlite", ".sqlite3", ".xls", ".xlsm", ".xlsx",
+  ".sqlite", ".sqlite3", ".xls", ".xlsb", ".xlsm", ".xlsx", ".ods",
 ]);
 const textExtensions = new Set([
   "", ".css", ".csv", ".env", ".example", ".html", ".js", ".json",
@@ -29,6 +29,7 @@ const textExtensions = new Set([
 const allowedDataFiles = new Set([
   "data/local-config.example.json",
   "data/sample-applications.csv",
+  "data/sample-recruiter-contacts.csv",
 ]);
 const publicContact = ["Vin", "cent", "@Rosette.Solutions"].join("");
 const personalTerms = [
@@ -37,6 +38,8 @@ const personalTerms = [
   ["Ryu", "ma"].join(""),
   ["Vin", "centRQ"].join(""),
 ];
+const personalMailboxDomains = [["out", "look"].join(""), ["hot", "mail"].join("")];
+const personalMailboxPattern = new RegExp(`@(?:${personalMailboxDomains.join("|")})\\.com\\b`, "i");
 
 for (const file of files) {
   const absolute = resolve(root, file);
@@ -69,6 +72,9 @@ for (const file of files) {
   if ((lower.startsWith("data/") || lower.includes("/data/")) && !allowedDataFiles.has(lower)) {
     failures.push(`${file}: only public example data may be tracked`);
   }
+  if (extension === ".csv" && !allowedDataFiles.has(lower)) {
+    failures.push(`${file}: only allowlisted synthetic CSV files may be released`);
+  }
   if (/^(?:data\/backups|data\/private|data\/provider-work)\//i.test(file) || lower === "data/local-config.json") {
     failures.push(`${file}: private operational path is not allowed`);
   }
@@ -80,7 +86,7 @@ for (const file of files) {
     if (content.toLowerCase().includes(term.toLowerCase())) failures.push(`${file}: contains a private identity marker`);
   }
   if (new RegExp(["Vin", "cent"].join(""), "i").test(content)) failures.push(`${file}: contains a personal name outside the approved public contact`);
-  if (/@outlook\.com\b|@hotmail\.com\b/i.test(content)) failures.push(`${file}: contains a personal mailbox domain`);
+  if (personalMailboxPattern.test(content)) failures.push(`${file}: contains a personal mailbox domain`);
   if (/(?:[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s]+|\/Users\/[^/\s]+|\/home\/[^/\s]+)/i.test(content)) {
     failures.push(`${file}: contains a user-specific local path`);
   }
@@ -95,6 +101,28 @@ for (const file of files) {
     /(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password)\s*[:=]\s*["']?[A-Za-z0-9._~+/-]{16,}/i,
   ];
   if (secretPatterns.some((pattern) => pattern.test(content))) failures.push(`${file}: resembles a committed credential`);
+}
+
+for (const file of gitHistoryPaths()) {
+  const lower = file.toLowerCase();
+  const extension = extname(lower);
+  const unapprovedCsv = extension === ".csv" && !allowedDataFiles.has(lower);
+  if (riskyExtensions.has(extension) || unapprovedCsv || /recruiter[\s_-]*contact/i.test(file) && !/sample-recruiter-contacts\.csv$/i.test(file)) {
+    failures.push(`${file}: private workbook or contact export exists in Git history`);
+  }
+}
+
+for (const marker of [...personalTerms, ...personalMailboxDomains.map((domain) => `@${domain}.com`)]) {
+  if (gitHistoryContains(marker)) failures.push(`Git history contains a private identity or mailbox marker`);
+}
+
+for (const sampleFile of ["data/sample-applications.csv", "data/sample-recruiter-contacts.csv"]) {
+  if (!files.includes(sampleFile)) failures.push(`${sampleFile}: required synthetic sample is missing`);
+  else {
+    const sample = readFileSync(resolve(root, sampleFile), "utf8");
+    if (/@(?![a-z0-9.-]*\.invalid\b)/i.test(sample)) failures.push(`${sampleFile}: sample email does not use the reserved .invalid domain`);
+    if (/https?:\/\/(?![a-z0-9.-]*\.invalid(?:\/|$))/i.test(sample)) failures.push(`${sampleFile}: sample link does not use the reserved .invalid domain`);
+  }
 }
 
 if (!files.length) failures.push("No release files were found.");
@@ -114,4 +142,26 @@ function walkFiles(directory) {
     else files.push(path);
   }
   return files;
+}
+
+function gitHistoryPaths() {
+  try {
+    return execFileSync("git", ["rev-list", "--objects", "HEAD"], { cwd: root, encoding: "utf8" })
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^[0-9a-f]+\s+/, "").trim())
+      .filter(Boolean);
+  } catch {
+    failures.push("Unable to inspect Git history for private workbook paths");
+    return [];
+  }
+}
+
+function gitHistoryContains(marker) {
+  try {
+    const output = execFileSync("git", ["log", "HEAD", `-S${marker}`, "--format=%H", "--"], { cwd: root, encoding: "utf8" });
+    return Boolean(output.trim());
+  } catch {
+    failures.push("Unable to inspect Git history content for private markers");
+    return false;
+  }
 }

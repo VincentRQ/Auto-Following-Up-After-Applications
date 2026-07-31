@@ -12,6 +12,10 @@ npm run dev:all
 Load the sample rows in the GUI. Profiles, imports, preflight, reports, CRM,
 dashboard, replay, and synthetic tests remain available.
 
+The backend uses a fresh in-memory database in this mode, regardless of any
+configured `OUTREACH_DATABASE` path. Private CRM and mailbox history are never
+opened by the sample backend.
+
 ## Private Operator Mode
 
 1. Copy `data/local-config.example.json` to `data/local-config.json`.
@@ -41,44 +45,83 @@ Use **Import a copy** for XLSX or browsers without local file-handle support.
 
 ## AI Writer
 
-Setup records which drafting engine you intend to use; selecting one does not
-connect or invoke it. Codex CLI and Claude Code require their local CLI to be
-installed and signed in. API providers require separate API credentials exposed
-to the backend as environment variables. Do not paste API secrets into the GUI.
+Setup records which drafting engine you intend to use. **Console invokes an AI**
+can use the bundled Codex, Claude, Cursor, or OpenCode Go CLI bridge without a
+separate writing helper. **Outside AI** leaves generation in an already running
+agent, while **Templates only** does not invoke a model.
 
-Until a private writing helper is connected, use **Outside AI**, **Templates**, or
-**Manual** in the Writing view. Outside-AI mode copies a structured brief and
-accepts the returned JSON without giving the outside model direct provider access.
-In-app generation uses `OUTREACH_WRITING_HELPER` and the contract in
-`public/WRITING_ADAPTER_CONTRACT.md`.
+Selecting a CLI does not silently sign in or send a prompt. Follow the displayed
+install and sign-in commands, then click **Test plan login**. That test checks the
+CLI and saved authentication only; it does not consume an inference request. API
+providers require separate credentials exposed to the backend as environment
+variables. Do not paste API secrets into the GUI.
+
+Here, **signed in through the CLI** has a precise meaning: the provider's local
+command-line program is installed for the same operating-system account that runs
+the backend, its browser or device authorization has saved a credential in that
+CLI's own local store, and the console can verify that account-backed credential
+with the provider's status command. The console does not receive the account
+password and does not store a model API key.
+
+Before plan-backed generation, select **Strict plan-only guard**. The backend
+rejects the request without this confirmation. For providers with server-side
+overage controls, first use the linked billing page: disable or cap Cursor
+on-demand usage and turn off OpenCode Zen **Use balance**. The local app can block
+API-key overrides and non-plan model namespaces, but it cannot change those remote
+account switches itself.
 
 ### Codex CLI With ChatGPT
 
 1. Install the CLI with `npm install -g @openai/codex`.
-2. Run `codex` under the same Windows account that starts this app.
-3. Choose **Sign in with ChatGPT** and finish the browser login.
-4. Verify the installation with `codex --version`.
-5. Select **Codex CLI with ChatGPT** in Setup and enter the model, if the local
-   adapter requires one.
-6. Install a backend adapter that invokes `codex exec`, sends the drafting
-   context through standard input, requires structured output, and rejects an
-   invalid response before message copy is accepted.
+2. Run `codex login` under the same OS account that starts this app.
+3. Finish **Sign in with ChatGPT** in the browser.
+4. Select **ChatGPT plan / Codex CLI** and click **Test plan login**.
+5. Leave the model blank to use the Codex default, or enter an available model.
 
 The ChatGPT login belongs to the local Codex CLI. It is not an OpenAI API key,
-and API billing is not used by this connection method.
+and this connection does not supply one. Usage counts against that ChatGPT
+account's Codex allowance or available ChatGPT credits.
 
-### Claude Code With Pro or Max
+### Claude Code With a Claude Plan
 
-1. Install the CLI with `npm install -g @anthropic-ai/claude-code`.
-2. Run `claude` and complete the Pro, Max, or Console login.
-3. Verify the local installation with `claude doctor`.
-4. Select **Claude Code with Pro/Max** in Setup.
-5. Install a backend adapter that invokes Claude in non-interactive print mode,
-   passes the drafting context, and validates structured output before accepting
-   message copy.
+1. Install the CLI with `npm install -g @anthropic-ai/claude-code@latest`, or use
+   Anthropic's native installer for your OS.
+2. Run `claude` and complete the Claude.ai login for a Pro, Max, Team, or
+   Enterprise account.
+3. Select **Claude plan / Claude Code** and click **Test plan login**.
+4. Leave the model blank to use the Claude Code default.
 
-The Claude subscription login and Anthropic API are separate connection and
-billing methods.
+The bridge removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, Bedrock, Vertex,
+and Foundry overrides before invoking Claude. Noninteractive use counts against
+the subscription's Agent SDK allowance; it does not use Anthropic API billing.
+
+### Cursor Plan
+
+1. On macOS, Linux, or Windows WSL, install with
+   `curl https://cursor.com/install -fsS | bash`.
+2. Run `cursor-agent login` and finish the browser login.
+3. Select **Cursor plan / Cursor CLI** and click **Test plan login**.
+
+The bridge removes `CURSOR_API_KEY` and uses the saved browser account. Cursor's
+status command confirms account authentication, not the paid tier; usage follows
+the plan and credits attached to that account. Disable or cap on-demand usage from
+the billing link next to the strict guard. On Windows, either start this app's
+backend inside WSL or use Cursor as the outside operator.
+
+### OpenCode Go
+
+1. Install with `npm install -g opencode-ai`.
+2. Run `opencode`, enter `/connect`, choose **OpenCode Go**, and paste the key
+   issued by the Go subscription.
+3. Select **OpenCode Go plan** and click **Test plan login**.
+4. Leave the model blank to use the first available `opencode-go/*` model, or
+   choose one from the model list loaded by the test.
+
+OpenCode Go uses a plan-issued key rather than browser OAuth. The bridge accepts
+only `opencode-go/*` model IDs and denies every model tool. A stored credential
+check does not spend usage; the first actual generation proves the subscription
+key is currently valid. Turn off **Use balance** in OpenCode Zen before confirming
+the strict guard so requests stop when the Go allowance is exhausted.
 
 ### Ollama
 

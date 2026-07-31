@@ -48,7 +48,8 @@
     "mode": "manual",
     "model": "",
     "baseUrl": "",
-    "apiKeyEnv": ""
+    "apiKeyEnv": "",
+    "strictPlanOnly": false
   },
   "integrations": {
     "version": 1,

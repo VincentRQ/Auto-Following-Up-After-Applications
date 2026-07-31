@@ -64,7 +64,7 @@ export interface SourceFileState {
   message: string;
 }
 
-export type AiConnectionMode = "codex_cli" | "claude_cli" | "ollama" | "openai_api" | "anthropic_api" | "gemini_api" | "groq_api" | "openrouter_api" | "openai_compatible" | "manual";
+export type AiConnectionMode = "codex_cli" | "claude_cli" | "cursor_cli" | "opencode_cli" | "ollama" | "openai_api" | "anthropic_api" | "gemini_api" | "groq_api" | "openrouter_api" | "openai_compatible" | "manual";
 export type AiControlMode = "external_operator" | "in_app" | "templates_only";
 
 export interface AiConnectionSettings {
@@ -73,6 +73,21 @@ export interface AiConnectionSettings {
   model: string;
   baseUrl: string;
   apiKeyEnv: string;
+  strictPlanOnly: boolean;
+}
+
+export type AiConnectionCheckStatus = "checking" | "ready" | "not_installed" | "not_authenticated" | "adapter_required" | "unsupported" | "error";
+
+export interface AiConnectionCheck {
+  mode: AiConnectionMode;
+  label: string;
+  status: AiConnectionCheckStatus;
+  installed: boolean;
+  authenticated: boolean;
+  detail: string;
+  nextCommand: string;
+  version: string;
+  availableModels: string[];
 }
 
 export type StorageMode = "browser" | "sqlite" | "external";

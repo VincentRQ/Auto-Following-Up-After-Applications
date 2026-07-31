@@ -18,6 +18,22 @@ service and sends no telemetry to its authors.
 
 These paths are ignored by git.
 
+## Public Samples
+
+The repository includes only `data/sample-applications.csv` and
+`data/sample-recruiter-contacts.csv` as public data. Both are synthetic, use a
+Customer Success demonstration profile, and use the reserved `.invalid` domain
+for every email address and link. They contain no exported recruiter history.
+
+A filename or row count that reappears when the GUI restarts is restored from that
+browser's IndexedDB/local storage. It is not embedded in the JavaScript build and
+does not travel with a Git clone or release. The Data Source view labels restored
+imports as a private local workspace and labels the bundled demonstration rows as
+synthetic public data.
+
+Public sample mode always uses an in-memory backend database. It does not open an
+existing `data/outreach.sqlite` file or an `OUTREACH_DATABASE` path.
+
 ## Data Sent Elsewhere
 
 When enabled, the backend can send search parameters to the selected contact
