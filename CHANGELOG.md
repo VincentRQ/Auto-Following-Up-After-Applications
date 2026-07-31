@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 - 2026-07-30
+
+- Fixed clipped Setup diagnostics in the right-side operational panel.
+- Kept calendar headings and controls visible on phones while limiting
+  horizontal scrolling to the seven-column month grid.
+- Revalidated the production UI across desktop, tablet, mobile, light, and
+  high-contrast layouts.
+
 ## 0.2.0 - 2026-07-30
 
 - Added resumable provider-neutral onboarding.

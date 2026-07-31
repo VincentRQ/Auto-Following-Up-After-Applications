@@ -124,7 +124,8 @@ Useful first prompts:
 - "Create a shadow plan for these reviewed applications."
 - "Preview contact enrichment for this company without spending credits."
 
-See [RELEASE_v0.2.0.md](docs/RELEASE_v0.2.0.md),
+See [RELEASE_v0.2.1.md](docs/RELEASE_v0.2.1.md),
+[RELEASE_v0.2.0.md](docs/RELEASE_v0.2.0.md),
 [MCP_FIRST_RELEASE.md](docs/MCP_FIRST_RELEASE.md), [PRIVACY.md](PRIVACY.md),
 and [SECURITY.md](SECURITY.md) before enabling provider or live-send settings.
 

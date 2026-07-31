@@ -641,7 +641,8 @@ h1 {
 .advanced-tools button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 4px; padding: 7px; font: inherit; cursor: pointer; }
 .advanced-tools button.active { color: var(--green); border-color: var(--green); }
 
-.calendar-workspace { display: grid; gap: 12px; }
+.calendar-workspace { display: grid; gap: 12px; min-width: 0; }
+.calendar-scroll { min-width: 0; }
 .calendar-summary { display: grid; justify-items: end; }
 .calendar-summary strong { color: var(--green); font-size: 24px; }
 .calendar-summary span { color: var(--muted); font-size: 10px; }
@@ -1342,6 +1343,22 @@ button.crm-company {
 .moving-average {
   display: grid;
   gap: 8px;
+}
+
+.setup-view {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.setup-view > *,
+.setup-view .section-heading > *,
+.storage-mode-options button span {
+  min-width: 0;
+}
+
+.setup-view .section-heading,
+.setup-view .setup-heading-actions {
+  flex-wrap: wrap;
 }
 
 .stats-grid {
@@ -2234,7 +2251,7 @@ button.crm-company {
   }
 
   .calendar-grid { min-width: 700px; }
-  .calendar-workspace { overflow-x: auto; padding-bottom: 4px; }
+  .calendar-scroll { overflow-x: auto; padding-bottom: 4px; }
 
   .metrics-grid,
   .ops-grid {
@@ -2311,6 +2328,19 @@ button.crm-company {
 }
 
 @media (max-width: 600px) {
+  .calendar-toolbar {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) 34px;
+  }
+
+  .calendar-toolbar h3 {
+    min-width: 0;
+  }
+
+  .calendar-toolbar .small-button {
+    grid-column: 1 / -1;
+  }
+
   .right-tabs {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

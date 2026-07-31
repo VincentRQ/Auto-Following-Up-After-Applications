@@ -1525,13 +1525,15 @@ function CalendarWorkspace({ jobs }: { jobs: JobRow[] }) {
       <header className="workspace-heading"><div><span className="eyebrow">Application timeline</span><h2>Calendar</h2><p>Applications, outreach, interviews, replies, and outcomes from the connected file.</p></div><div className="calendar-summary"><strong>{monthEvents.length}</strong><span>events this month</span></div></header>
       <div className="calendar-toolbar"><button className="icon-button" title="Previous month" onClick={() => moveMonth(-1)}><ChevronLeft size={17} /></button><h3>{monthDate.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h3><button className="icon-button" title="Next month" onClick={() => moveMonth(1)}><ChevronRight size={17} /></button><button className="small-button compact" onClick={() => setMonth(latestDate.slice(0, 7))}>Latest activity</button></div>
       <div className="calendar-legend">{(["application", "outreach", "interview", "reply", "rejection", "bounce", "confirmation"] as CalendarEventKind[]).map((kind) => <span className={kind} key={kind}><i />{kind}</span>)}</div>
-      <div className="calendar-grid" role="grid">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <div className="calendar-weekday" key={day}>{day}</div>)}
-        {cells.map((day, index) => {
-          const date = day ? `${month}-${String(day).padStart(2, "0")}` : "";
-          const dayEvents = day ? monthEvents.filter((event) => event.date === date) : [];
-          return <div className={`calendar-day ${day ? "" : "outside"}`} role="gridcell" key={`${month}-${index}`}><strong>{day ?? ""}</strong><div>{dayEvents.slice(0, 4).map((event) => <span className={`calendar-event ${event.kind}`} title={`${event.company}: ${event.label}`} key={event.id}><i />{event.company}</span>)}{dayEvents.length > 4 && <small>+{dayEvents.length - 4} more</small>}</div></div>;
-        })}
+      <div className="calendar-scroll">
+        <div className="calendar-grid" role="grid">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <div className="calendar-weekday" key={day}>{day}</div>)}
+          {cells.map((day, index) => {
+            const date = day ? `${month}-${String(day).padStart(2, "0")}` : "";
+            const dayEvents = day ? monthEvents.filter((event) => event.date === date) : [];
+            return <div className={`calendar-day ${day ? "" : "outside"}`} role="gridcell" key={`${month}-${index}`}><strong>{day ?? ""}</strong><div>{dayEvents.slice(0, 4).map((event) => <span className={`calendar-event ${event.kind}`} title={`${event.company}: ${event.label}`} key={event.id}><i />{event.company}</span>)}{dayEvents.length > 4 && <small>+{dayEvents.length - 4} more</small>}</div></div>;
+          })}
+        </div>
       </div>
       {!monthEvents.length && <div className="empty-report">No dated activity in this month.</div>}
     </div>
