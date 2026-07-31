@@ -1,0 +1,110 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontFamily": "Arial, sans-serif",
+    "fontSize": "17px",
+    "primaryTextColor": "#17202A",
+    "lineColor": "#52606D",
+    "clusterBkg": "#F7F9FB",
+    "clusterBorder": "#AAB7C4",
+    "edgeLabelBackground": "#FFFFFF"
+  },
+  "flowchart": {
+    "curve": "basis",
+    "htmlLabels": true,
+    "nodeSpacing": 30,
+    "rankSpacing": 45,
+    "padding": 14
+  }
+}}%%
+
+flowchart TB
+    TITLE["JOB APPLICATION FOLLOW-UP PIPELINE<br/><small>Human input at the start. Automated sourcing, outreach, and recovery afterward.</small>"]
+
+    subgraph HUMAN["1 | YOUR PART |"]
+        direction LR
+        APPLY["Apply to jobs"]
+        TRACK["Add each application to<br/>the working CSV or Excel file<br/><small>Company | Role | Link | Profile</small>"]
+        APPLY --> TRACK
+    end
+
+    subgraph INTAKE["2 | AUTOMATED INTAKE |"]
+        direction LR
+        SYNC["Sync or import<br/>new application rows"]
+        VALIDATE["Validate required fields<br/>and assign the right profile"]
+        HISTORY["Match company history<br/><small>Prevent duplicates and rotate prior contacts</small>"]
+        SYNC --> VALIDATE --> HISTORY
+    end
+
+    subgraph SOURCE["3 | CONTACT SOURCING |"]
+        direction LR
+        FIND["Find up to 3 relevant people<br/><small>Talent and recruiters first</small>"]
+        ENRICH["Primary contact provider<br/><small>Selected by the operator</small>"]
+        BACKUP["Optional fallback provider<br/><small>When a clean contact is still needed</small>"]
+        RANK["Rank and verify contacts<br/><small>Role relevance, confidence, recency</small>"]
+        FIND --> ENRICH --> RANK
+        ENRICH -. "no usable email" .-> BACKUP --> RANK
+    end
+
+    subgraph OUTREACH["4 | PERSONALIZED OUTREACH |"]
+        direction LR
+        DRAFT["Build a role-specific email<br/><small>Correct profile, resume, job link, and ID</small>"]
+        PREFLIGHT["Pre-send checks<br/><small>Suppression, duplicates, routing, contact quality</small>"]
+        SCHEDULE["Schedule controlled sends<br/><small>Spaced delivery instead of a bulk blast</small>"]
+        SEND["Send through the<br/>correct email account"]
+        DRAFT --> PREFLIGHT --> SCHEDULE --> SEND
+    end
+
+    subgraph MONITOR["5 | FOLLOW-UP AND RECOVERY |"]
+        direction TB
+        WATCH["Monitor configured inboxes<br/>and classify responses"]
+        DECIDE{"What happened?"}
+        POSITIVE["Next step or interview<br/><small>Alert the applicant and pause company outreach</small>"]
+        REDIRECT["OOO or referral<br/><small>Add the named person and redirect the message</small>"]
+        BOUNCE["Bounce or invalid email<br/><small>Replace the contact; flag repeated failures</small>"]
+        QUIET["No response<br/><small>Queue a measured follow-up when eligible</small>"]
+        REJECT["Rejection<br/><small>Update the application and stop role outreach</small>"]
+        WATCH --> DECIDE
+        DECIDE -->|Positive reply| POSITIVE
+        DECIDE -->|Referral or OOO| REDIRECT
+        DECIDE -->|Delivery failure| BOUNCE
+        DECIDE -->|No reply yet| QUIET
+        DECIDE -->|Rejection| REJECT
+    end
+
+    subgraph RECORD["6 | ONE CONTINUOUS RECORD |"]
+        direction LR
+        CRM["Company-centered history<br/><small>Jobs, contacts, sends, replies, and exceptions<br/>inform every future run</small>"]
+        STATUS["Update status and calendar<br/><small>Applied | Sent | Replied | Interview | Rejected</small>"]
+        REPORT["Produce an after-send report<br/><small>Coverage gaps, failures, and actions needed</small>"]
+        CRM --> STATUS --> REPORT
+    end
+
+    TITLE --> APPLY
+    TRACK --> SYNC
+    HISTORY --> FIND
+    RANK --> DRAFT
+    SEND --> WATCH
+    REDIRECT --> CRM
+    BOUNCE --> CRM
+    QUIET --> CRM
+    REJECT --> CRM
+    POSITIVE --> CRM
+
+    classDef title fill:#17202A,stroke:#17202A,color:#FFFFFF,stroke-width:2px;
+    classDef human fill:#E8F3EC,stroke:#2E7D4F,color:#173C28,stroke-width:2px;
+    classDef intake fill:#EAF2FA,stroke:#3374A6,color:#163A57,stroke-width:2px;
+    classDef source fill:#FFF3D9,stroke:#B7791F,color:#5A3A0B,stroke-width:2px;
+    classDef outreach fill:#F2ECF8,stroke:#76549B,color:#352247,stroke-width:2px;
+    classDef monitor fill:#FDEDEC,stroke:#B94A48,color:#582321,stroke-width:2px;
+    classDef record fill:#E8F5F3,stroke:#287F78,color:#15423E,stroke-width:2px;
+    classDef decision fill:#FFFFFF,stroke:#59636E,color:#17202A,stroke-width:2px;
+
+    class TITLE title;
+    class APPLY,TRACK human;
+    class SYNC,VALIDATE,HISTORY intake;
+    class FIND,ENRICH,BACKUP,RANK source;
+    class DRAFT,PREFLIGHT,SCHEDULE,SEND outreach;
+    class WATCH,POSITIVE,REDIRECT,BOUNCE,QUIET,REJECT monitor;
+    class DECIDE decision;
+    class CRM,STATUS,REPORT record;

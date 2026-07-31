@@ -1,0 +1,38 @@
+{
+  "name": "outreach-console-mcp",
+  "version": "0.2.0",
+  "description": "Codex plugin for a local job-application outreach pipeline with confirmation-gated provider actions.",
+  "author": {
+    "name": "Outreach Console contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "outreach",
+    "job-search",
+    "mcp",
+    "recruiting",
+    "email"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Outreach Console MCP",
+    "shortDescription": "Operate a local job outreach pipeline.",
+    "longDescription": "Connects Codex to the local Outreach Console backend for application tracking, company history, contact enrichment, individualized writing, email-provider drafting, recovery handling, and carefully gated sending. Provider credentials remain outside the assistant, sensitive data is opt-in, and paid or external actions require an exact two-step confirmation.",
+    "developerName": "Outreach Console contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Check my outreach setup",
+      "Show open recovery cases",
+      "Build a shadow outreach batch"
+    ],
+    "brandColor": "#23C483",
+    "composerIcon": "./assets/outreach-icon.png",
+    "logo": "./assets/outreach-icon.png",
+    "screenshots": []
+  }
+}

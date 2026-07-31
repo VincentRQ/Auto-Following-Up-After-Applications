@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Outreach Console">
+  <rect width="128" height="128" rx="16" fill="#101511"/>
+  <path d="M24 32h80v64H24z" fill="none" stroke="#23c483" stroke-width="8"/>
+  <path d="m28 38 36 30 36-30M38 86h28" fill="none" stroke="#f4f7f5" stroke-width="7" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="m78 80 9 9 18-21" fill="none" stroke="#f2bf4a" stroke-width="7" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

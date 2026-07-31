@@ -1,0 +1,74 @@
+{
+  "$schema": "./schemas/outreach-config.schema.json",
+  "version": 1,
+  "workflow": {
+    "version": 1,
+    "colorTheme": "terminal",
+    "density": "compact",
+    "accentColor": "green",
+    "reduceMotion": false,
+    "defaultSpacingSeconds": 30,
+    "defaultContactTarget": 3,
+    "companyCooldownDays": 180,
+    "mailboxMonitorMinutes": 15,
+    "requireDraftReview": true,
+    "requireSendApproval": true,
+    "autoPrepareRedirectDrafts": true,
+    "modules": {
+      "calendar": true,
+      "profiles": true,
+      "mailbox": true,
+      "recovery": true,
+      "crm": true,
+      "statistics": true,
+      "debug": true
+    }
+  },
+  "storage": {
+    "version": 1,
+    "mode": "browser",
+    "sqlitePath": "data/outreach.sqlite",
+    "externalDialect": "postgresql",
+    "externalAdapterUrl": "",
+    "externalWorkspaceId": "default",
+    "externalSyncMode": "manual",
+    "externalSchemaReady": false
+  },
+  "writing": {
+    "version": 1,
+    "mode": "external_llm",
+    "subjectTemplate": "{{role_title}} | {{job_id}}",
+    "bodyTemplate": "Hi {{recipient_first_name}},\n\nI noticed {{company}} is hiring for {{role_title}}. I would be glad to connect if it would be useful.\n\nBest,\n{{sender_name}}",
+    "globalPrompt": "Use supplied facts, write warmly and specifically, avoid sales language, and do not invent experience.",
+    "maximumWords": 80,
+    "requireIndividualReview": true
+  },
+  "aiConnection": {
+    "controlMode": "external_operator",
+    "mode": "manual",
+    "model": "",
+    "baseUrl": "",
+    "apiKeyEnv": ""
+  },
+  "integrations": {
+    "version": 1,
+    "primaryEnrichment": {
+      "providerId": "custom_enrichment",
+      "label": "My contact provider",
+      "enabled": true,
+      "credentialEnv": "CONTACT_PROVIDER_API_KEY"
+    },
+    "fallbackEnrichment": {
+      "providerId": "none",
+      "label": "No provider",
+      "enabled": false,
+      "credentialEnv": ""
+    },
+    "mailbox": {
+      "providerId": "custom_mailbox",
+      "label": "My email provider",
+      "enabled": true,
+      "credentialEnv": "MAIL_PROVIDER_TOKEN"
+    }
+  }
+}

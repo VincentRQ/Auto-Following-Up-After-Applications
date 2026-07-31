@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "outreach-console": {
+      "command": "node",
+      "args": [
+        "./dist/outreach-mcp.js"
+      ]
+    }
+  }
+}

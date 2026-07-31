@@ -1,0 +1,99 @@
+{
+  "manifest_version": "0.4",
+  "name": "outreach-console-mcp",
+  "display_name": "Outreach Console MCP",
+  "version": "0.2.0",
+  "description": "Operate a local job-application outreach pipeline with explicit provider and send controls.",
+  "long_description": "Connects an AI assistant to a local company-centric outreach backend. Application tracking and aggregate status are read-only by default. Contact PII, mailbox content, paid enrichment, email-provider drafts, AI writing, and live sends are disabled unless explicitly enabled. External and state-changing actions require short-lived confirmation tokens bound to the exact arguments.",
+  "author": {
+    "name": "Outreach Console contributors"
+  },
+  "license": "MIT",
+  "icon": "assets/outreach-icon.png",
+  "keywords": ["job search", "outreach", "recruiting", "email", "crm"],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/outreach-mcp.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/outreach-mcp.js"],
+      "env": {
+        "OUTREACH_MCP_BACKEND_URL": "${user_config.backend_url}",
+        "OUTREACH_MCP_MAX_ROWS": "${user_config.max_rows}",
+        "OUTREACH_MCP_EXPOSE_CONTACTS": "${user_config.expose_contacts}",
+        "OUTREACH_MCP_EXPOSE_MAILBOX": "${user_config.expose_mailbox}",
+        "OUTREACH_MCP_ENABLE_PROVIDER_ACTIONS": "${user_config.enable_provider_actions}",
+        "OUTREACH_MCP_ENABLE_LIVE_SEND": "${user_config.enable_live_send}"
+      }
+    }
+  },
+  "tools_generated": false,
+  "tools": [
+    { "name": "outreach_health", "description": "Check local backend and provider readiness." },
+    { "name": "outreach_setup_status", "description": "Show routing, resume, sample-mode, and send-lock status." },
+    { "name": "outreach_provider_check", "description": "Run provider setup checks without spending credits." },
+    { "name": "outreach_dashboard", "description": "Show statuses, moving activity averages, and provider usage." },
+    { "name": "outreach_list_companies", "description": "List normalized companies and operational counts." },
+    { "name": "outreach_get_company", "description": "Show company, job, contact, and outreach detail (opt-in PII)." },
+    { "name": "outreach_list_exceptions", "description": "List open recovery and exception cases." },
+    { "name": "outreach_incident_report", "description": "Return health, exceptions, logs, and current metrics." },
+    { "name": "outreach_get_run", "description": "Inspect a persisted batch or replay run." },
+    { "name": "outreach_mailbox_events", "description": "Read locally ingested mailbox events (opt-in PII/content)." },
+    { "name": "outreach_import_applications", "description": "Import normalized application rows (confirm)." },
+    { "name": "outreach_submit_shadow_batch", "description": "Create a non-sending run plan (confirm)." },
+    { "name": "outreach_enrich_company", "description": "Run the configured contact provider, optionally spending credits (confirm)." },
+    { "name": "outreach_sync_mailbox", "description": "Read configured mailboxes and optionally apply matched state changes (confirm)." },
+    { "name": "outreach_create_draft", "description": "Create a profile-routed email-provider draft (confirm)." },
+    { "name": "outreach_send_email", "description": "Send one profile-routed email (live opt-in plus confirm)." },
+    { "name": "outreach_list_message_drafts", "description": "List recipient-level writing drafts (opt-in PII)." },
+    { "name": "outreach_save_message_draft", "description": "Save one recipient-level message for review (confirm)." },
+    { "name": "outreach_generate_messages", "description": "Generate reviewed message copy through the configured writing helper (confirm)." },
+    { "name": "outreach_set_company_suppression", "description": "Pause or resume company outreach (confirm)." },
+    { "name": "outreach_resolve_exception", "description": "Complete, dismiss, or defer a recovery case (confirm)." }
+  ],
+  "compatibility": {
+    "platforms": ["win32", "darwin", "linux"],
+    "runtimes": { "node": ">=24.0.0" }
+  },
+  "user_config": {
+    "backend_url": {
+      "type": "string",
+      "title": "Local backend URL",
+      "description": "URL of the running Outreach Console backend.",
+      "default": "http://127.0.0.1:43127",
+      "required": true
+    },
+    "max_rows": {
+      "type": "number",
+      "title": "Maximum rows returned",
+      "description": "Caps list responses sent into the AI conversation.",
+      "default": 100,
+      "min": 10,
+      "max": 500
+    },
+    "expose_contacts": {
+      "type": "boolean",
+      "title": "Expose recruiter contacts",
+      "description": "Enables tools that return recruiter names and email addresses. Off by default.",
+      "default": false
+    },
+    "expose_mailbox": {
+      "type": "boolean",
+      "title": "Expose mailbox events",
+      "description": "Enables tools that return sender details and message previews. Off by default.",
+      "default": false
+    },
+    "enable_provider_actions": {
+      "type": "boolean",
+      "title": "Enable provider actions",
+      "description": "Allows confirmed contact, mailbox, writing, and email-provider operations. Off by default.",
+      "default": false
+    },
+    "enable_live_send": {
+      "type": "boolean",
+      "title": "Enable live email sends",
+      "description": "Allows the send tool to reach the backend. The backend live-send lock and confirmation are still required. Off by default.",
+      "default": false
+    }
+  }
+}

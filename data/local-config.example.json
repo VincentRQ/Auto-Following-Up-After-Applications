@@ -1,0 +1,22 @@
+{
+  "legacyWorkspace": "C:\\path\\to\\job-search-workspace",
+  "enrichmentHelper": "C:\\path\\to\\enrich_contacts.py",
+  "enrichmentSetupHelper": "C:\\path\\to\\check_enrichment_setup.py",
+  "mailboxHelper": "C:\\path\\to\\mailbox_helper.py",
+  "writingHelper": "C:\\path\\to\\writing_helper.py",
+  "python": "python",
+  "integrations": {
+    "primaryEnrichment": { "providerId": "custom_enrichment", "label": "Your contact provider", "enabled": true, "credentialEnv": "CONTACT_PROVIDER_API_KEY" },
+    "fallbackEnrichment": { "providerId": "none", "label": "No fallback provider", "enabled": false, "credentialEnv": "" },
+    "mailbox": { "providerId": "custom_mailbox", "label": "Your email provider", "enabled": true, "credentialEnv": "" }
+  },
+  "accounts": [
+    { "alias": "profile_a", "profile": "data_analyst" }
+  ],
+  "profiles": {
+    "data_analyst": {
+      "account": "profile_a",
+      "resume": "C:\\path\\to\\resume.pdf"
+    }
+  }
+}

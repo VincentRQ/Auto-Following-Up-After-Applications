@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rosette.solutions/schemas/outreach-console-config-v1.json",
+  "title": "Outreach Console non-secret configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "workflow", "storage", "writing", "aiConnection", "integrations"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "workflow": {
+      "type": "object",
+      "required": ["version", "colorTheme", "density", "accentColor", "defaultSpacingSeconds", "defaultContactTarget", "modules"],
+      "properties": {
+        "version": { "const": 1 },
+        "colorTheme": { "enum": ["terminal", "light", "high_contrast"] },
+        "density": { "enum": ["compact", "comfortable"] },
+        "accentColor": { "enum": ["green", "cyan", "amber"] },
+        "reduceMotion": { "type": "boolean" },
+        "defaultSpacingSeconds": { "type": "integer", "minimum": 15, "maximum": 3600 },
+        "defaultContactTarget": { "type": "integer", "minimum": 1, "maximum": 12 },
+        "companyCooldownDays": { "type": "integer", "minimum": 0, "maximum": 3650 },
+        "mailboxMonitorMinutes": { "type": "integer", "minimum": 0, "maximum": 1440 },
+        "requireDraftReview": { "type": "boolean" },
+        "requireSendApproval": { "type": "boolean" },
+        "autoPrepareRedirectDrafts": { "type": "boolean" },
+        "modules": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "calendar": { "type": "boolean" },
+            "profiles": { "type": "boolean" },
+            "mailbox": { "type": "boolean" },
+            "recovery": { "type": "boolean" },
+            "crm": { "type": "boolean" },
+            "statistics": { "type": "boolean" },
+            "debug": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "required": ["version", "mode"],
+      "properties": {
+        "version": { "const": 1 },
+        "mode": { "enum": ["browser", "sqlite", "external"] },
+        "sqlitePath": { "type": "string", "maxLength": 500 },
+        "externalDialect": { "enum": ["postgresql", "mysql", "other"] },
+        "externalAdapterUrl": { "type": "string", "maxLength": 2000 },
+        "externalWorkspaceId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,80}$" },
+        "externalSyncMode": { "enum": ["manual", "automatic"] },
+        "externalSchemaReady": { "type": "boolean" }
+      }
+    },
+    "writing": {
+      "type": "object",
+      "required": ["version", "mode", "subjectTemplate", "bodyTemplate", "globalPrompt", "maximumWords"],
+      "properties": {
+        "version": { "const": 1 },
+        "mode": { "enum": ["template", "manual", "external_llm", "in_app_llm"] },
+        "subjectTemplate": { "type": "string", "maxLength": 500 },
+        "bodyTemplate": { "type": "string", "maxLength": 20000 },
+        "globalPrompt": { "type": "string", "maxLength": 20000 },
+        "maximumWords": { "type": "integer", "minimum": 20, "maximum": 500 },
+        "requireIndividualReview": { "type": "boolean" }
+      }
+    },
+    "aiConnection": {
+      "type": "object",
+      "required": ["controlMode", "mode", "model", "baseUrl", "apiKeyEnv"],
+      "properties": {
+        "controlMode": { "enum": ["external_operator", "in_app", "templates_only"] },
+        "mode": { "enum": ["codex_cli", "claude_cli", "ollama", "openai_api", "anthropic_api", "gemini_api", "groq_api", "openrouter_api", "openai_compatible", "manual"] },
+        "model": { "type": "string", "maxLength": 500 },
+        "baseUrl": { "type": "string", "maxLength": 2000 },
+        "apiKeyEnv": { "type": "string", "pattern": "^[A-Z0-9_]*$", "maxLength": 100 }
+      }
+    },
+    "integrations": {
+      "type": "object",
+      "required": ["version", "primaryEnrichment", "fallbackEnrichment", "mailbox"],
+      "properties": {
+        "version": { "const": 1 },
+        "primaryEnrichment": { "$ref": "#/$defs/integration" },
+        "fallbackEnrichment": { "$ref": "#/$defs/integration" },
+        "mailbox": { "$ref": "#/$defs/integration" }
+      }
+    }
+  },
+  "$defs": {
+    "integration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "label", "enabled", "credentialEnv"],
+      "properties": {
+        "providerId": { "type": "string", "maxLength": 100 },
+        "label": { "type": "string", "maxLength": 200 },
+        "enabled": { "type": "boolean" },
+        "credentialEnv": { "type": "string", "pattern": "^[A-Z0-9_]*$", "maxLength": 100 }
+      }
+    }
+  }
+}
