@@ -1,5 +1,7 @@
 Outreach Console MCP
 
+Copyright (c) 2026 Vincent Quimby
+
 This repository includes an MCP wrapper for a local outreach backend. Apollo,
 Skrapp, Microsoft Outlook, Microsoft Graph, Codex, Claude, and other named
 products are trademarks or services of their respective owners. They are not

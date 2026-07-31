@@ -4,8 +4,10 @@ import { existsSync } from "node:fs";
 const SIX_MONTHS_MS = 183 * 24 * 60 * 60 * 1000;
 
 import { classifyMailboxMessage } from "./providers.js";
+import { backupAndResetWorkspace, workspaceRecordCounts } from "./database.js";
 
-export function createService(db, providers = null) {
+export function createService(db, providers = null, { databasePath = ":memory:" } = {}) {
+  const resetConfirmations = new Map();
   return {
     health: () => ({
       status: "ok",
@@ -113,6 +115,35 @@ export function createService(db, providers = null) {
 
     incidentReport() {
       return { generatedAt: isoNow(), health: this.health(), dashboard: this.dashboard(), openExceptions: this.listExceptions().filter((item) => item.state === "open"), unmatchedMailbox: this.listMailboxEvents("unmatched"), recentLogs: db.prepare("SELECT * FROM system_logs ORDER BY id DESC LIMIT 200").all().map(parseLog) };
+    },
+
+    previewWorkspaceReset() {
+      const now = Date.now();
+      for (const [token, expiresAt] of resetConfirmations) if (expiresAt <= now) resetConfirmations.delete(token);
+      const token = randomUUID();
+      const expiresAt = now + 5 * 60 * 1000;
+      resetConfirmations.set(token, expiresAt);
+      return {
+        token,
+        expiresAt: new Date(expiresAt).toISOString(),
+        counts: workspaceRecordCounts(db),
+        backupPlanned: databasePath !== ":memory:",
+        preserved: ["source spreadsheets and resumes", "provider and CLI credentials", "local provider configuration", "external databases"],
+      };
+    },
+
+    resetWorkspace(input) {
+      const token = String(input?.token ?? "");
+      const expiresAt = resetConfirmations.get(token) ?? 0;
+      resetConfirmations.delete(token);
+      if (!token || expiresAt <= Date.now()) throw httpError(409, "Reset preview expired or was already used. Open Start fresh again.");
+      if (input?.confirmation !== "START FRESH") throw httpError(409, "Type START FRESH exactly to clear local application history.");
+      const result = backupAndResetWorkspace(db, databasePath);
+      return {
+        resetAt: isoNow(),
+        ...result,
+        preserved: ["source spreadsheets and resumes", "provider and CLI credentials", "local provider configuration", "external databases"],
+      };
     },
 
     setupStatus() {
@@ -392,7 +423,7 @@ export function createService(db, providers = null) {
       const result = await providers.send(context);
       const mailboxProvider = providers?.integrations?.().mailbox?.providerId ?? "mailbox_provider";
       this.recordOutreach(context.company.id, { contact_id: context.contact.id, job_id: context.job.id, profile: context.job.profile, status: "sent", subject: context.subject, external_id: result.id ?? "", metadata: { provider: mailboxProvider, account: context.account } });
-      return { sent: true, account: context.account, company: context.company.name, recipient: context.contact.email, provider: result };
+      return { sent: true, account: context.account, company: context.company.name, recipient: context.contact.email, provider_message_id: result.id ?? "" };
     },
 
     getRun(runId) {
@@ -403,7 +434,7 @@ export function createService(db, providers = null) {
 
     replayRun(runId) {
       const original = this.getRun(runId);
-      const replay = this.submitBatch(JSON.parse(original.request_json));
+      const replay = this.submitBatch(original.request);
       db.prepare("UPDATE runs SET replay_of = ? WHERE id = ?").run(runId, replay.run_id);
       const current = this.getRun(replay.run_id);
       return {
@@ -478,9 +509,11 @@ function selectContacts(db, companyId, target, now) {
 }
 
 function findOrCreateContact(db, companyId, input) {
+  const normalized = { ...input, name: input.name || input.email };
+  validateContact(normalized);
   db.prepare(`INSERT OR IGNORE INTO contacts (company_id, name, title, email, source, confidence, tier, created_at)
     VALUES (?, ?, ?, ?, 'exception', 0.5, 3, ?)`)
-    .run(companyId, input.name || input.email, input.title || "", input.email.toLowerCase(), isoNow());
+    .run(companyId, normalized.name, normalized.title || "", normalized.email.toLowerCase(), isoNow());
   return db.prepare("SELECT * FROM contacts WHERE company_id = ? AND email = ?").get(companyId, input.email.toLowerCase());
 }
 function saveContact(db, companyId, input) {
@@ -510,7 +543,13 @@ function countRecentFailures(db, companyId) {
 function requireCompany(db, id) { const row = db.prepare("SELECT * FROM companies WHERE id = ?").get(Number(id)); if (!row) throw httpError(404, "Company not found"); return row; }
 function requireContact(db, companyId, id) { const row = db.prepare("SELECT * FROM contacts WHERE id = ? AND company_id = ?").get(Number(id), companyId); if (!row) throw httpError(404, "Contact not found for company"); return row; }
 function requireJob(db, companyId, id) { const row = db.prepare("SELECT * FROM jobs WHERE id = ? AND company_id = ?").get(Number(id), companyId); if (!row) throw httpError(404, "Job not found for company"); return row; }
-function validateContact(input) { if (!input?.name?.trim() || !input?.email?.includes("@")) throw httpError(400, "contact name and valid email are required"); }
+function validateContact(input) {
+  const name = String(input?.name ?? "").trim();
+  const email = String(input?.email ?? "").trim();
+  if (!name || name.length > 500 || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw httpError(400, "contact name and valid email are required");
+  }
+}
 function clampConfidence(value) { const number = Number(value ?? 0.5); return Math.max(0, Math.min(1, Number.isFinite(number) ? number : 0.5)); }
 function clampTier(value) { const number = Number(value ?? 3); return [1, 2, 3].includes(number) ? number : 3; }
 function validDate(value) { if (!value) return null; const date = new Date(value); if (Number.isNaN(date.getTime())) throw httpError(400, "occurred_at must be a valid date"); return date.toISOString(); }
@@ -576,11 +615,15 @@ function repairCrossProfileMailboxStates(db, accounts) {
 function escapeRegex(value) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function outreachContext(db, providers, input) {
   if (!input?.company_id || !input?.job_id || !input?.contact_id || !input?.subject || !input?.body) throw httpError(400, "company_id, job_id, contact_id, subject, and body are required");
+  const subject = String(input.subject).trim();
+  const body = String(input.body);
+  if (!subject || subject.length > 500 || /[\r\n\0]/.test(subject)) throw httpError(400, "subject must be one line and no more than 500 characters");
+  if (!body.trim() || body.length > 20_000 || body.includes("\0")) throw httpError(400, "body must be no more than 20000 characters and cannot contain null bytes");
   const company = requireCompany(db, input.company_id); const job = requireJob(db, company.id, input.job_id); const contact = requireContact(db, company.id, input.contact_id);
   if (contact.suppressed_at || company.suppression_reason) throw httpError(409, "Suppressed company or contact cannot receive outreach");
   if (contact.email.endsWith("@local.invalid")) throw httpError(409, "Historical contact has no verified email address");
   const profile = providers.profiles[job.profile]; if (!profile?.account) throw httpError(409, `No sender account configured for profile ${job.profile}`);
-  return { company, job, contact, account: profile.account, attachment: profile.resume || "", to: contact.email, subject: input.subject, body: input.body, html: input.html === true };
+  return { company, job, contact, account: profile.account, attachment: profile.resume || "", to: contact.email, subject, body, html: input.html === true };
 }
 function suppressContact(db, id, reason) { db.prepare("UPDATE contacts SET suppressed_at = ?, suppression_reason = ? WHERE id = ?").run(isoNow(), reason, id); }
 function suppressCompany(db, id, reason) { db.prepare("UPDATE companies SET suppression_reason = ?, updated_at = ? WHERE id = ?").run(reason, isoNow(), id); }
@@ -588,12 +631,23 @@ function isFailure(type) { return type === "hard_bounce" || type === "invalid_em
 function appendEvent(db, correlation, entityType, entityId, type, payload) { db.prepare("INSERT INTO events (correlation_id, entity_type, entity_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(correlation, entityType, entityId, type, JSON.stringify(payload), isoNow()); }
 function writeUsage(db, provider, operation, requests, credits, success, metadata) { db.prepare("INSERT INTO provider_usage (provider, operation, request_count, credit_count, success, occurred_at, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?)").run(provider, operation, requests, credits, success ? 1 : 0, isoNow(), JSON.stringify(metadata)); }
 function writeLog(db, level, category, message, correlation, context) { db.prepare("INSERT INTO system_logs (level, category, message, correlation_id, context_json, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(level, category, message, correlation, JSON.stringify(context), isoNow()); }
-function parseLog(row) { return { ...row, context: JSON.parse(row.context_json ?? "{}") }; }
-function parseException(row) { return { ...row, evidence: JSON.parse(row.evidence_json), proposedAction: JSON.parse(row.proposed_action_json) }; }
-function parseHistory(row) { return { ...row, metadata: JSON.parse(row.metadata_json ?? "{}") }; }
-function parseEvent(row) { return { ...row, payload: JSON.parse(row.payload_json) }; }
+function parseLog(row) { const { context_json, ...fields } = row; return { ...fields, context: JSON.parse(context_json ?? "{}") }; }
+function parseException(row) { const { evidence_json, proposed_action_json, ...fields } = row; return { ...fields, evidence: JSON.parse(evidence_json), proposedAction: JSON.parse(proposed_action_json) }; }
+function parseHistory(row) { const { metadata_json, ...fields } = row; return { ...fields, metadata: JSON.parse(metadata_json ?? "{}") }; }
+function parseEvent(row) { const { payload_json, ...fields } = row; return { ...fields, payload: JSON.parse(payload_json) }; }
 function publicContact(c) { return { id: c.id, name: c.name, title: c.title, email: c.email, source: c.source, confidence: c.confidence, tier: c.tier, suppressed: Boolean(c.suppressed_at) }; }
-function hydrateRun(db, run) { return { ...run, request: JSON.parse(run.request_json), items: db.prepare("SELECT * FROM run_items WHERE run_id = ? ORDER BY id").all(run.id).map((item) => ({ ...item, plan: JSON.parse(item.plan_json) })), events: db.prepare("SELECT * FROM events WHERE correlation_id = ? ORDER BY id").all(run.id).map((e) => ({ ...e, payload: JSON.parse(e.payload_json) })) }; }
+function hydrateRun(db, run) {
+  const { request_json, ...runFields } = run;
+  return {
+    ...runFields,
+    request: JSON.parse(request_json),
+    items: db.prepare("SELECT * FROM run_items WHERE run_id = ? ORDER BY id").all(run.id).map((item) => {
+      const { plan_json, ...itemFields } = item;
+      return { ...itemFields, plan: JSON.parse(plan_json) };
+    }),
+    events: db.prepare("SELECT * FROM events WHERE correlation_id = ? ORDER BY id").all(run.id).map(parseEvent),
+  };
+}
 function stablePlans(items) { return JSON.stringify(items.map((item) => item.plan ?? item).map((item) => ({ state: item.state, contacts: item.contacts?.map((c) => c.email) ?? item.plan?.contacts?.map((c) => c.email) }))); }
 function validateBatch(p) { if (!p?.profile || !Array.isArray(p.queue) || !p.queue.length) throw httpError(400, "profile and a non-empty queue are required"); }
 function normalizeCompany(value) { return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }

@@ -32,6 +32,10 @@ const allowedDataFiles = new Set([
   "data/sample-recruiter-contacts.csv",
 ]);
 const publicContact = ["Vin", "cent", "@Rosette.Solutions"].join("");
+const publicRepository = ["https://github.com/", "Vin", "centRQ/Auto-Following-Up-After-Applications"].join("");
+const publicMaintainer = ["Vin", "cent Quimby"].join("");
+const publicAccount = ["Vin", "centRQ"].join("");
+const publicMaintainerAssignment = `  - ${["Vin", "centRQ"].join("")}`;
 const personalTerms = [
   ["V", "Quim"].join(""),
   ["Vinc", "enzo"].join(""),
@@ -79,8 +83,11 @@ for (const file of files) {
     failures.push(`${file}: private operational path is not allowed`);
   }
 
-  let content = bytes.toString("utf8");
-  if (file === "docs/APPLICATION_PROCESS_GUIDE.md") content = content.replaceAll(publicContact, "[PUBLIC_CONTACT]");
+  let content = bytes.toString("utf8")
+    .replaceAll(publicContact, "[PUBLIC_CONTACT]")
+    .replaceAll(publicRepository, "[PUBLIC_REPOSITORY]")
+    .replaceAll(publicMaintainer, "[PUBLIC_MAINTAINER]")
+    .replaceAll(publicMaintainerAssignment, "  - [PUBLIC_MAINTAINER]");
 
   for (const term of personalTerms) {
     if (content.toLowerCase().includes(term.toLowerCase())) failures.push(`${file}: contains a private identity marker`);
@@ -112,7 +119,7 @@ for (const file of gitHistoryPaths()) {
   }
 }
 
-for (const marker of [...personalTerms, ...personalMailboxDomains.map((domain) => `@${domain}.com`)]) {
+for (const marker of [...personalTerms.filter((term) => term !== publicAccount), ...personalMailboxDomains.map((domain) => `@${domain}.com`)]) {
   if (gitHistoryContains(marker)) failures.push(`Git history contains a private identity or mailbox marker`);
 }
 

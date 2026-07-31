@@ -13,9 +13,10 @@
       "required": ["version", "colorTheme", "density", "accentColor", "defaultSpacingSeconds", "defaultContactTarget", "modules"],
       "properties": {
         "version": { "const": 1 },
-        "colorTheme": { "enum": ["terminal", "light", "high_contrast"] },
+        "colorTheme": { "enum": ["terminal", "light", "graphite", "mulberry", "high_contrast"] },
         "density": { "enum": ["compact", "comfortable"] },
-        "accentColor": { "enum": ["green", "cyan", "amber"] },
+        "accentColor": { "enum": ["green", "cyan", "amber", "rose", "violet"] },
+        "backgroundEffect": { "enum": ["off", "scanlines", "grid_drift", "signal_sweep", "data_points", "circuit_traces"] },
         "reduceMotion": { "type": "boolean" },
         "defaultSpacingSeconds": { "type": "integer", "minimum": 15, "maximum": 3600 },
         "defaultContactTarget": { "type": "integer", "minimum": 1, "maximum": 12 },
@@ -71,7 +72,7 @@
       "required": ["controlMode", "mode", "model", "baseUrl", "apiKeyEnv"],
       "properties": {
         "controlMode": { "enum": ["external_operator", "in_app", "templates_only"] },
-        "mode": { "enum": ["codex_cli", "claude_cli", "cursor_cli", "opencode_cli", "ollama", "openai_api", "anthropic_api", "gemini_api", "groq_api", "openrouter_api", "openai_compatible", "manual"] },
+        "mode": { "enum": ["codex_cli", "claude_cli", "cursor_cli", "opencode_cli", "ollama", "openai_api", "anthropic_api", "gemini_api", "groq_api", "openrouter_api", "deepseek_api", "kimi_api", "mistral_api", "together_api", "cerebras_api", "openai_compatible", "manual"] },
         "model": { "type": "string", "maxLength": 500 },
         "baseUrl": { "type": "string", "maxLength": 2000 },
         "apiKeyEnv": { "type": "string", "pattern": "^[A-Z0-9_]*$", "maxLength": 100 },

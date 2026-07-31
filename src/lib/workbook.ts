@@ -1,4 +1,3 @@
-import readXlsxWorkbook from "read-excel-file/browser";
 import type { JobRow, JobStatus, ProfileKey, WorkbookImportResult } from "../types";
 import { csvCell } from "./csv";
 import { profileKeyFromLabel } from "./profiles";
@@ -68,6 +67,7 @@ export function importWorkbookSheets(sheets: WorkbookSheetInput[], fileName: str
 }
 
 async function parseXlsxFile(file: File): Promise<WorkbookSheetInput[]> {
+  const { default: readXlsxWorkbook } = await import("read-excel-file/browser");
   return await readXlsxWorkbook(file) as unknown as WorkbookSheetInput[];
 }
 

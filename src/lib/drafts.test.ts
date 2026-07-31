@@ -33,11 +33,26 @@ describe("message drafts", () => {
 
   it("renders templates and updates readiness after a recipient is supplied", () => {
     const writing = { ...defaultWritingPreferences, mode: "template" as const };
-    const [draft] = prepareMessageDrafts([job], [], 1, writing, "Jordan");
-    const updated = updateMessageDraft(draft, { recipientName: "Alex Smith", recipientEmail: "alex@example.test" }, writing, job, "Jordan");
+    const focus = "SQL analysis, dashboard reporting, and data quality";
+    const [draft] = prepareMessageDrafts([job], [], 1, writing, "Jordan", focus);
+    const updated = updateMessageDraft(draft, { recipientName: "Alex Smith", recipientEmail: "alex@example.test" }, writing, job, "Jordan", focus);
     expect(updated.body).toContain("Hi Alex");
     expect(updated.body).toContain("weekly KPI reporting");
+    expect(updated.body).toContain(focus);
+    expect(wordCount(updated.body)).toBeLessThanOrEqual(80);
     expect(updated.status).toBe("ready");
+  });
+
+  it("keeps over-limit copy in writing review", () => {
+    const writing = { ...defaultWritingPreferences, mode: "manual" as const, maximumWords: 20 };
+    const [draft] = prepareMessageDrafts([job], [], 1, writing, "Jordan");
+    const updated = updateMessageDraft(draft, {
+      recipientName: "Alex Smith",
+      recipientEmail: "alex@example.test",
+      subject: "Reporting Analyst",
+      body: Array.from({ length: 21 }, () => "word").join(" "),
+    }, writing, job, "Jordan");
+    expect(updated.status).toBe("needs_writing");
   });
 
   it("retains explicit approval only while the message remains complete", () => {

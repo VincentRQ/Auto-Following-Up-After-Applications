@@ -16,6 +16,7 @@ export const defaultWorkflowPreferences: WorkflowPreferences = {
   colorTheme: "terminal",
   density: "compact",
   accentColor: "green",
+  backgroundEffect: "scanlines",
   reduceMotion: false,
   defaultSpacingSeconds: 30,
   defaultContactTarget: 3,
@@ -24,6 +25,8 @@ export const defaultWorkflowPreferences: WorkflowPreferences = {
   requireDraftReview: true,
   requireSendApproval: true,
   autoPrepareRedirectDrafts: true,
+  leftPanelWidth: 280,
+  rightPanelWidth: 330,
   modules: {
     calendar: true,
     profiles: true,
@@ -40,9 +43,9 @@ export const defaultWritingPreferences: WritingPreferences = {
   mode: "external_llm",
   subjectTemplate: "{{role_title}} | {{job_id}}",
   bodyTemplate:
-    "Hi {{recipient_first_name}},\n\nI noticed {{company}} is hiring for {{role_title}}, with a focus on {{responsibility}}. My background includes analytics delivery, reporting, and data quality work that overlaps with the role.\n\nI would be glad to connect if it would be useful. Thank you for your time.\n\nBest,\n{{sender_name}}",
+    "Hi {{recipient_first_name}},\n\nI saw {{company}} is hiring for {{role_title}}, with an emphasis on {{responsibility}}. My background includes {{profile_focus}}, which overlaps with that work. I applied and wanted to put my application on your radar. Would you be the right person to contact about the role?\n\nBest,\n{{sender_name}}",
   globalPrompt:
-    "Write from the candidate's point of view. Use one concrete detail from the role, keep the message warm and specific, avoid sales language and generic AI phrasing, and do not invent experience. Keep the body within the configured word limit.",
+    "Write from the candidate's point of view in four short sentences after the greeting. Open with one factual responsibility from the job post, then connect one supplied profile strength to that work. State that the application was submitted and end with one easy routing question. Keep the complete body, including greeting and sign-off, under the configured word limit. Keep the subject clear and under 50 characters when practical. Do not open with 'I recently applied.' Do not invent praise, company problems, experience, names, identifiers, or results. Avoid sales language, urgency, generic AI phrasing, and more than one question or call to action.",
   maximumWords: 80,
   requireIndividualReview: true,
 };
@@ -65,9 +68,10 @@ export function normalizeWorkflowPreferences(value: Partial<WorkflowPreferences>
     ...defaultWorkflowPreferences,
     ...(value ?? {}),
     version: 1,
-    colorTheme: ["terminal", "light", "high_contrast"].includes(value?.colorTheme ?? "") ? value!.colorTheme! : defaultWorkflowPreferences.colorTheme,
+    colorTheme: ["terminal", "light", "graphite", "mulberry", "high_contrast"].includes(value?.colorTheme ?? "") ? value!.colorTheme! : defaultWorkflowPreferences.colorTheme,
     density: ["compact", "comfortable"].includes(value?.density ?? "") ? value!.density! : defaultWorkflowPreferences.density,
-    accentColor: ["green", "cyan", "amber"].includes(value?.accentColor ?? "") ? value!.accentColor! : defaultWorkflowPreferences.accentColor,
+    accentColor: ["green", "cyan", "amber", "rose", "violet"].includes(value?.accentColor ?? "") ? value!.accentColor! : defaultWorkflowPreferences.accentColor,
+    backgroundEffect: ["off", "scanlines", "grid_drift", "signal_sweep", "data_points", "circuit_traces"].includes(value?.backgroundEffect ?? "") ? value!.backgroundEffect! : defaultWorkflowPreferences.backgroundEffect,
     defaultSpacingSeconds: clampInteger(value?.defaultSpacingSeconds, 15, 3600, defaultWorkflowPreferences.defaultSpacingSeconds),
     defaultContactTarget: clampInteger(value?.defaultContactTarget, 1, 12, defaultWorkflowPreferences.defaultContactTarget),
     companyCooldownDays: clampInteger(value?.companyCooldownDays, 0, 3650, defaultWorkflowPreferences.companyCooldownDays),
@@ -76,6 +80,8 @@ export function normalizeWorkflowPreferences(value: Partial<WorkflowPreferences>
     requireDraftReview: value?.requireDraftReview !== false,
     requireSendApproval: value?.requireSendApproval !== false,
     autoPrepareRedirectDrafts: value?.autoPrepareRedirectDrafts !== false,
+    leftPanelWidth: clampInteger(value?.leftPanelWidth, 220, 440, defaultWorkflowPreferences.leftPanelWidth),
+    rightPanelWidth: clampInteger(value?.rightPanelWidth, 260, 520, defaultWorkflowPreferences.rightPanelWidth),
     modules,
   };
 }
@@ -96,6 +102,7 @@ export function workflowAttributes(value: WorkflowPreferences): Record<string, s
     "data-theme": value.colorTheme,
     "data-density": value.density,
     "data-accent": value.accentColor,
+    "data-background-effect": value.backgroundEffect,
     "data-reduce-motion": value.reduceMotion ? "true" : "false",
   };
 }

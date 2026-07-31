@@ -2,6 +2,7 @@ import type {
   AiConnectionSettings,
   BatchInstructions,
   BatchReport,
+  CalendarPreferences,
   IntegrationSettings,
   JobRow,
   MessageDraft,
@@ -11,8 +12,10 @@ import type {
   StorageSettings,
   WorkflowPreferences,
   WritingPreferences,
+  WorkspaceTutorialState,
 } from "../types";
-import { DEFAULT_PROFILES } from "./profiles";
+import { createDefaultProfiles } from "./profiles";
+import { normalizeCalendarPreferences } from "./calendar";
 import { normalizeStorageSettings, normalizeWorkflowPreferences, normalizeWritingPreferences } from "./preferences";
 
 const prefix = "outreach-console.";
@@ -34,12 +37,31 @@ export const storageKeys = {
   workflow: `${prefix}workflow`,
   writing: `${prefix}writing`,
   drafts: `${prefix}drafts`,
+  tutorial: `${prefix}tutorial`,
+  calendar: `${prefix}calendar`,
 };
 
 export function loadProfiles(): ProfileDefinition[] {
-  return loadJson(storageKeys.profiles, DEFAULT_PROFILES, (value) => {
-    return Array.isArray(value) && value.length > 0;
-  }).filter((profile) => profile.key && profile.label && profile.accent);
+  const profiles = loadJson(storageKeys.profiles, createDefaultProfiles(), isProfileArray);
+  return normalizeProfileDefinitions(profiles);
+}
+
+export function normalizeProfileDefinitions(value: unknown, fallback = createDefaultProfiles()): ProfileDefinition[] {
+  const profiles = isProfileArray(value) ? value : fallback;
+  const seen = new Set<string>();
+  return profiles.filter((profile) => {
+    if (seen.has(profile.key)) return false;
+    seen.add(profile.key);
+    return true;
+  }).map((profile) => ({
+    key: profile.key.slice(0, 40),
+    label: profile.label.slice(0, 100),
+    senderName: profile.senderName.slice(0, 150),
+    senderEmail: String(profile.senderEmail ?? "").slice(0, 320),
+    resumeLabel: String(profile.resumeLabel ?? "").slice(0, 500),
+    notes: String(profile.notes ?? "").slice(0, 2_000),
+    accent: /^#[0-9a-f]{6}$/i.test(profile.accent) ? profile.accent : "#48d597",
+  }));
 }
 
 export function loadInstructions(defaultInstructions: BatchInstructions): BatchInstructions {
@@ -82,7 +104,22 @@ export function loadString(key: string, fallback = ""): string {
 }
 
 export function loadAiConnection(fallback: AiConnectionSettings): AiConnectionSettings {
-  return { ...fallback, ...loadJson(storageKeys.aiConnection, {}, isObject) };
+  const stored = loadJson<Partial<AiConnectionSettings>>(storageKeys.aiConnection, {}, isObject);
+  return normalizeAiConnectionSettings(stored, fallback);
+}
+
+export function normalizeAiConnectionSettings(value: Partial<AiConnectionSettings> | undefined, fallback: AiConnectionSettings): AiConnectionSettings {
+  const stored = isObject(value) ? value : {};
+  const modes = new Set<AiConnectionSettings["mode"]>(["codex_cli", "claude_cli", "cursor_cli", "opencode_cli", "ollama", "openai_api", "anthropic_api", "gemini_api", "groq_api", "openrouter_api", "deepseek_api", "kimi_api", "mistral_api", "together_api", "cerebras_api", "openai_compatible", "manual"]);
+  const controls = new Set<AiConnectionSettings["controlMode"]>(["external_operator", "in_app", "templates_only"]);
+  return {
+    controlMode: controls.has(stored.controlMode as AiConnectionSettings["controlMode"]) ? stored.controlMode! : fallback.controlMode,
+    mode: modes.has(stored.mode as AiConnectionSettings["mode"]) ? stored.mode! : fallback.mode,
+    model: String(stored.model ?? fallback.model).slice(0, 200),
+    baseUrl: String(stored.baseUrl ?? fallback.baseUrl).slice(0, 2_000),
+    apiKeyEnv: String(stored.apiKeyEnv ?? fallback.apiKeyEnv).toUpperCase().replace(/[^A-Z0-9_]/g, "").slice(0, 100),
+    strictPlanOnly: stored.strictPlanOnly === true,
+  };
 }
 
 export function loadSourceState(fallback: SourceFileState): SourceFileState {
@@ -120,6 +157,28 @@ export function loadMessageDrafts(): MessageDraft[] {
   return loadJson<MessageDraft[]>(storageKeys.drafts, [], Array.isArray).filter((item) => Boolean(item?.id && item?.jobRowId));
 }
 
+export function loadWorkspaceTutorialState(fallback: WorkspaceTutorialState): WorkspaceTutorialState {
+  const stored = loadJson<Partial<WorkspaceTutorialState>>(storageKeys.tutorial, {}, isObject);
+  return {
+    version: 1,
+    completed: stored.completed === true,
+    skipped: stored.skipped === true,
+    lastStep: Number.isFinite(stored.lastStep) ? Math.max(0, Math.floor(stored.lastStep ?? 0)) : fallback.lastStep,
+    updatedAt: typeof stored.updatedAt === "string" ? stored.updatedAt : fallback.updatedAt,
+  };
+}
+
+export function loadCalendarPreferences(fallback: CalendarPreferences): CalendarPreferences {
+  const stored = loadJson<Partial<CalendarPreferences>>(storageKeys.calendar, {}, isObject);
+  return normalizeCalendarPreferences({
+    ...fallback,
+    ...stored,
+    includedKinds: isObject(stored.includedKinds)
+      ? { ...fallback.includedKinds, ...stored.includedKinds }
+      : fallback.includedKinds,
+  });
+}
+
 export function saveJson(key: string, value: unknown): void {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
@@ -130,6 +189,16 @@ export function saveJson(key: string, value: unknown): void {
 
 export function saveString(key: string, value: string): void {
   window.localStorage.setItem(key, value);
+}
+
+export async function clearLocalApplicationState(): Promise<void> {
+  const keys: string[] = [];
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (key?.startsWith(prefix)) keys.push(key);
+  }
+  for (const key of keys) window.localStorage.removeItem(key);
+  if (typeof indexedDB !== "undefined") await deleteWorkspaceDatabase();
 }
 
 function loadJson<T>(key: string, fallback: T, guard: (value: unknown) => boolean): T {
@@ -156,8 +225,20 @@ function preserveCorruptValue(key: string, raw: string, reason: string): void {
   }
 }
 
-function isObject(value: unknown): boolean {
+function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isProfileArray(value: unknown): value is ProfileDefinition[] {
+  return Array.isArray(value) && value.length > 0 && value.every((profile) =>
+    isObject(profile)
+    && typeof profile.key === "string"
+    && /^[a-z0-9_]{1,40}$/.test(profile.key)
+    && typeof profile.label === "string"
+    && Boolean(profile.label.trim())
+    && typeof profile.senderName === "string"
+    && typeof profile.accent === "string",
+  );
 }
 
 function openWorkspaceDatabase(): Promise<IDBDatabase> {
@@ -168,6 +249,15 @@ function openWorkspaceDatabase(): Promise<IDBDatabase> {
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Unable to open workspace storage."));
+  });
+}
+
+function deleteWorkspaceDatabase(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(databaseName);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error ?? new Error("Unable to clear workspace storage."));
+    request.onblocked = () => reject(new Error("Workspace storage is still open in another tab. Close other Outreach Console tabs and try again."));
   });
 }
 

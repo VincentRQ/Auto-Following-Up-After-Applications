@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createOutreachServer } from "./server.js";
 import { classifyMailboxMessage, createProviders } from "./providers.js";
-import { mergeConfig } from "./config.js";
+import { loadConfig, mergeConfig } from "./config.js";
 
 let server;
 let base;
@@ -31,6 +31,10 @@ test("shadow run builds a company-centric plan and replays deterministically", a
 
   const replay = await jsonFetch(`/api/runs/${run.run_id}/replay`, { method: "POST" });
   assert.equal(replay.equivalent, true);
+  const persisted = await jsonFetch(`/api/runs/${run.run_id}`);
+  assert.equal("request_json" in persisted, false);
+  assert.equal("plan_json" in persisted.items[0], false);
+  assert.equal("payload_json" in persisted.events[0], false);
 });
 
 test("bounce replacement and four-failure warning are operational", async () => {
@@ -190,9 +194,65 @@ test("email-provider drafts route by profile while live sends remain locked", as
   await new Promise((resolve) => isolated.close(resolve));
 });
 
-test("public sample mode is an absolute provider send lock", async () => {
-  const providers = createProviders({ publicSampleMode: true, liveSendEnabled: true, profiles: {}, accounts: [], outlookHelper: "", legacyWorkspace: "", python: "python" });
+test("live send responses expose only the provider message ID", async () => {
+  let sendCalls = 0;
+  const fakeProviders = {
+    accounts: [],
+    profiles: { data_analyst: { account: "da", resume: "resume.pdf" } },
+    liveSendEnabled: true,
+    status: () => ({ mailbox: "mock" }),
+    integrations: () => ({ mailbox: { providerId: "synthetic_mailbox" } }),
+    send: async () => { sendCalls += 1; return { id: "sent-1", access_token: "must-not-leak", raw: { authorization: "must-not-leak" } }; },
+  };
+  const isolated = createOutreachServer({ databasePath: ":memory:", providers: fakeProviders });
+  await new Promise((resolve) => isolated.listen(0, "127.0.0.1", resolve));
+  const host = `http://127.0.0.1:${isolated.address().port}`;
+  try {
+    const run = await fetchJson(host, "/api/batches", { method: "POST", body: JSON.stringify(batch([job("send-row", "Send Co", "REQ-S")])) });
+    const contact = await fetchJson(host, `/api/crm/companies/${run.items[0].companyId}/contacts`, { method: "POST", body: JSON.stringify({ name: "Recruiter", email: "recruiter@send.example", tier: 1 }) });
+    const sent = await fetchJson(host, "/api/outreach/send", { method: "POST", body: JSON.stringify({ company_id: run.items[0].companyId, job_id: run.items[0].jobId, contact_id: contact.id, subject: "QA send", body: "QA body", approval: "SEND_APPROVED" }) });
+    assert.equal(sent.provider_message_id, "sent-1");
+    assert.equal(JSON.stringify(sent).includes("must-not-leak"), false);
+    assert.equal("provider" in sent, false);
+    const injected = await fetch(`${host}/api/outreach/send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ company_id: run.items[0].companyId, job_id: run.items[0].jobId, contact_id: contact.id, subject: "Safe\r\nBcc: attacker@example.test", body: "QA body", approval: "SEND_APPROVED" }) });
+    assert.equal(injected.status, 400);
+    assert.equal(sendCalls, 1);
+  } finally {
+    await new Promise((resolve) => isolated.close(resolve));
+  }
+});
+
+test("public sample mode is an absolute provider and connection-check lock", async () => {
+  const executableHelper = fileURLToPath(import.meta.url);
+  const providers = createProviders({
+    publicSampleMode: true,
+    liveSendEnabled: true,
+    profiles: {},
+    accounts: [],
+    enrichmentHelper: executableHelper,
+    enrichmentSetupHelper: executableHelper,
+    mailboxHelper: executableHelper,
+    writingHelper: executableHelper,
+    outlookHelper: "",
+    legacyWorkspace: "",
+    python: "python",
+    integrations: {
+      primaryEnrichment: { providerId: "custom", label: "Custom", enabled: true },
+      fallbackEnrichment: { providerId: "none", label: "None", enabled: false },
+      mailbox: { providerId: "custom", label: "Custom", enabled: true },
+    },
+  });
+  const checked = await providers.check();
+  assert.equal(checked.publicSampleMode, true);
+  assert.deepEqual(checked.accounts, []);
+  const ai = await providers.checkAi({ mode: "codex_cli" });
+  assert.equal(ai.status, "error");
+  assert.match(ai.detail, /disabled in public sample mode/);
+  await assert.rejects(() => providers.enrich({}), /disabled in public sample mode/);
+  await assert.rejects(() => providers.recentMailbox("sample"), /disabled in public sample mode/);
+  await assert.rejects(() => providers.createDraft({}), /disabled in public sample mode/);
   await assert.rejects(() => providers.send({}), /disabled in public sample mode/);
+  await assert.rejects(() => providers.generateMessages({}), /disabled in public sample mode/);
 });
 
 test("public sample mode never opens a configured private database", async () => {
@@ -230,6 +290,46 @@ test("environment safety flags override null local config values", () => {
   );
   assert.equal(config.publicSampleMode, true);
   assert.equal(config.liveSendEnabled, false);
+});
+
+test("public sample configuration does not read private config or helper paths", () => {
+  const directory = mkdtempSync(join(tmpdir(), "outreach-sample-config-"));
+  const configPath = join(directory, "local-config.json");
+  writeFileSync(configPath, JSON.stringify({
+    enrichmentHelper: "C:\\private\\enrichment.exe",
+    mailboxHelper: "C:\\private\\mailbox.exe",
+    accounts: [{ alias: "private-account", profile: "private-profile" }],
+    profiles: { "private-profile": { account: "private-account", resume: "C:\\private\\resume.pdf" } },
+  }));
+  try {
+    const config = loadConfig(configPath, {
+      OUTREACH_PUBLIC_SAMPLE_MODE: "1",
+      OUTREACH_LIVE_SEND: "1",
+      OUTREACH_ENRICHMENT_HELPER: "C:\\private\\from-env.exe",
+    });
+    assert.equal(config.publicSampleMode, true);
+    assert.equal(config.liveSendEnabled, false);
+    assert.equal(config.enrichmentHelper, "");
+    assert.equal(config.mailboxHelper, "");
+    assert.deepEqual(config.accounts, []);
+    assert.deepEqual(config.profiles, {});
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("invalid private config degrades to disconnected defaults", () => {
+  const directory = mkdtempSync(join(tmpdir(), "outreach-invalid-config-"));
+  const configPath = join(directory, "local-config.json");
+  writeFileSync(configPath, "{not-json");
+  try {
+    const config = loadConfig(configPath, {});
+    assert.match(config.configError, /not valid JSON/);
+    assert.equal(config.enrichmentHelper, "");
+    assert.equal(config.liveSendEnabled, false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("integration preferences are provider-neutral, atomic, and honest about missing adapters", () => {
@@ -453,6 +553,131 @@ test("localhost HTTP boundary blocks foreign browser origins and oversized JSON"
     });
     assert.equal(oversized.status, 413);
   } finally { await new Promise((resolve) => isolated.close(resolve)); }
+});
+
+test("optional static bundle serves the GUI without runtime packages", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "outreach-static-"));
+  const assets = join(directory, "assets");
+  mkdirSync(assets);
+  writeFileSync(join(directory, "index.html"), "<!doctype html><title>Outreach Console</title><div id=\"root\"></div>");
+  writeFileSync(join(assets, "app-abcdef.js"), "console.log('portable');");
+  writeFileSync(join(directory, "outside.txt"), "not exposed");
+  const isolated = createOutreachServer({ databasePath: ":memory:", providers: null, staticRoot: directory });
+  await new Promise((resolve) => isolated.listen(0, "127.0.0.1", resolve));
+  const host = `http://127.0.0.1:${isolated.address().port}`;
+  try {
+    const index = await fetch(`${host}/`);
+    assert.equal(index.status, 200);
+    assert.match(index.headers.get("content-type"), /^text\/html/);
+    assert.match(index.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+    assert.equal(index.headers.get("x-frame-options"), "DENY");
+    assert.equal(index.headers.get("cross-origin-opener-policy"), "same-origin");
+    assert.equal(index.headers.get("cross-origin-resource-policy"), "same-origin");
+    assert.match(await index.text(), /Outreach Console/);
+
+    const asset = await fetch(`${host}/assets/app-abcdef.js`, { method: "HEAD" });
+    assert.equal(asset.status, 200);
+    assert.equal(asset.headers.get("cache-control"), "public, max-age=31536000, immutable");
+    assert.equal(await asset.text(), "");
+
+    const health = await fetch(`${host}/api/health`);
+    assert.equal(health.status, 200);
+    assert.match(health.headers.get("content-type"), /^application\/json/);
+
+    const traversal = await fetch(`${host}/..%2Foutside.txt`);
+    assert.equal(traversal.status, 403);
+    const doubleEncodedTraversal = await fetch(`${host}/%252e%252e%252foutside.txt`);
+    assert.equal(doubleEncodedTraversal.status, 404);
+    const missing = await fetch(`${host}/missing.txt`);
+    assert.equal(missing.status, 404);
+  } finally {
+    await new Promise((resolve) => isolated.close(resolve));
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("public sample static bundle can connect only to its own locked backend", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "outreach-sample-static-"));
+  writeFileSync(join(directory, "index.html"), "<!doctype html><title>Sample</title>");
+  const providers = {
+    profiles: {}, accounts: [], liveSendEnabled: false, publicSampleMode: true,
+    status: () => ({ enrichment: "disabled", fallback: "disabled", mailbox: "disabled", writing: "disabled" }),
+  };
+  const isolated = createOutreachServer({ databasePath: ":memory:", providers, staticRoot: directory });
+  await new Promise((resolve) => isolated.listen(0, "127.0.0.1", resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${isolated.address().port}/`);
+    const policy = response.headers.get("content-security-policy");
+    assert.match(policy, /connect-src 'self';/);
+    assert.doesNotMatch(policy, /127\.0\.0\.1:\*/);
+    assert.doesNotMatch(policy, /localhost:\*/);
+  } finally {
+    await new Promise((resolve) => isolated.close(resolve));
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("static bundle refuses a symbolic link that escapes its root", async (context) => {
+  const parent = mkdtempSync(join(tmpdir(), "outreach-static-link-"));
+  const root = join(parent, "web");
+  mkdirSync(root);
+  const outside = join(parent, "private.txt");
+  const link = join(root, "linked.txt");
+  writeFileSync(join(root, "index.html"), "<!doctype html><div id=\"root\"></div>");
+  writeFileSync(outside, "private");
+  try {
+    try { symlinkSync(outside, link, "file"); }
+    catch (error) { context.skip(`Symbolic links are unavailable: ${error.code ?? error.message}`); return; }
+    const isolated = createOutreachServer({ databasePath: ":memory:", providers: null, staticRoot: root });
+    await new Promise((resolve) => isolated.listen(0, "127.0.0.1", resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${isolated.address().port}/linked.txt`);
+      assert.equal(response.status, 403);
+      assert.equal(await response.text().then((value) => value.includes("private")), false);
+    } finally {
+      await new Promise((resolve) => isolated.close(resolve));
+    }
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test("fresh start requires a one-time preview, backs up SQLite, and clears only app records", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "outreach-fresh-start-"));
+  const databasePath = join(directory, "outreach.sqlite");
+  const sourcePath = join(directory, "applications.csv");
+  const configPath = join(directory, "local-config.json");
+  writeFileSync(sourcePath, "company,job_title,job_url\nPreserved Company,Analyst,https://example.invalid/job\n");
+  writeFileSync(configPath, JSON.stringify({ mailbox: "configured", resume: "resume.pdf" }));
+  const isolated = createOutreachServer({ databasePath, providers: null });
+  await new Promise((resolve) => isolated.listen(0, "127.0.0.1", resolve));
+  const host = `http://127.0.0.1:${isolated.address().port}`;
+  try {
+    await fetchJson(host, "/api/import/applications", { method: "POST", body: JSON.stringify({ source: "reset-test", applications: [{ source_row_id: "reset-row", company: "Reset Company", profile: "data_analyst", role_title: "Analyst" }] }) });
+    const firstPreview = await fetchJson(host, "/api/system/reset/preview", { method: "POST", body: "{}" });
+    assert.equal(firstPreview.counts.companies, 1);
+    assert.equal(firstPreview.counts.jobs, 1);
+    assert.equal(firstPreview.backupPlanned, true);
+
+    const wrongPhrase = await fetch(`${host}/api/system/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: firstPreview.token, confirmation: "RESET" }) });
+    assert.equal(wrongPhrase.status, 409);
+
+    const preview = await fetchJson(host, "/api/system/reset/preview", { method: "POST", body: "{}" });
+    const reset = await fetchJson(host, "/api/system/reset", { method: "POST", body: JSON.stringify({ token: preview.token, confirmation: "START FRESH" }) });
+    assert.equal(reset.backupCreated, true);
+    assert.equal(existsSync(join(directory, "backups", reset.backupFile)), true);
+    assert.equal(reset.deleted.companies, 1);
+    assert.equal(readFileSync(sourcePath, "utf8"), "company,job_title,job_url\nPreserved Company,Analyst,https://example.invalid/job\n");
+    assert.deepEqual(JSON.parse(readFileSync(configPath, "utf8")), { mailbox: "configured", resume: "resume.pdf" });
+    const dashboard = await fetchJson(host, "/api/dashboard");
+    assert.deepEqual(dashboard.totals, { companies: 0, contacts: 0, jobs: 0 });
+
+    const replay = await fetch(`${host}/api/system/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: preview.token, confirmation: "START FRESH" }) });
+    assert.equal(replay.status, 409);
+  } finally {
+    await new Promise((resolve) => isolated.close(resolve));
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 function batch(queue) { return { profile: "data_analyst", scheduled_at: new Date().toISOString(), spacing_seconds: 30, contact_target: 3, instructions: {}, queue }; }

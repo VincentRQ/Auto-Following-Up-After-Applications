@@ -8,6 +8,7 @@ export function prepareMessageDrafts(
   contactTarget: number,
   writing: WritingPreferences,
   senderName = "",
+  profileFocus = "relevant work in the field",
 ): MessageDraft[] {
   const existingById = new Map(existing.map((draft) => [draft.id, draft]));
   const next: MessageDraft[] = [];
@@ -19,7 +20,7 @@ export function prepareMessageDrafts(
         next.push({ ...saved, company: job.company, roleTitle: job.roleTitle, jobId: job.jobId, jobUrl: job.jobUrl, profile: job.profile });
         continue;
       }
-      const values = templateValues(job, senderName, "", "");
+      const values = templateValues(job, senderName, "", "", profileFocus);
       const subject = renderMessageTemplate(writing.subjectTemplate, values);
       const body = writing.mode === "template" ? renderMessageTemplate(writing.bodyTemplate, values) : "";
       next.push({
@@ -52,14 +53,15 @@ export function updateMessageDraft(
   writing: WritingPreferences,
   job?: JobRow,
   senderName = "",
+  profileFocus = "relevant work in the field",
 ): MessageDraft {
   const merged = { ...draft, ...update, updatedAt: new Date().toISOString() };
   if (merged.mode === "template" && job && (update.mode !== undefined || update.recipientName !== undefined || update.recipientTitle !== undefined)) {
-    const values = templateValues(job, senderName, merged.recipientName, merged.recipientTitle);
+    const values = templateValues(job, senderName, merged.recipientName, merged.recipientTitle, profileFocus);
     merged.subject = renderMessageTemplate(writing.subjectTemplate, values);
     merged.body = renderMessageTemplate(writing.bodyTemplate, values);
   }
-  const calculatedStatus = draftStatus(merged, writing.requireIndividualReview);
+  const calculatedStatus = draftStatus(merged, writing);
   merged.status = update.status === "approved" && calculatedStatus !== "needs_recipient" && calculatedStatus !== "needs_writing"
     ? "approved"
     : calculatedStatus;
@@ -124,7 +126,7 @@ export function renderMessageTemplate(template: string, values: Record<string, s
   return template.replace(placeholderPattern, (_match, key: string) => values[key.toLowerCase()] ?? "");
 }
 
-function templateValues(job: JobRow, senderName: string, recipientName: string, recipientTitle: string): Record<string, string> {
+function templateValues(job: JobRow, senderName: string, recipientName: string, recipientTitle: string, profileFocus: string): Record<string, string> {
   const responsibility = firstResponsibility(job.jobDescription ?? "");
   return {
     company: job.company,
@@ -133,6 +135,7 @@ function templateValues(job: JobRow, senderName: string, recipientName: string, 
     job_url: job.jobUrl,
     source: job.source,
     responsibility: responsibility || "the role's reporting and analysis priorities",
+    profile_focus: profileFocus,
     sender_name: senderName,
     recipient_name: recipientName,
     recipient_first_name: recipientName.trim().split(/\s+/)[0] ?? "",
@@ -146,11 +149,12 @@ function firstResponsibility(description: string): string {
     .map((item) => item.replace(/^[-*\u2022\s]+/, "").trim())
     .find((item) => item.length >= 20);
   if (!line) return "";
-  return line.replace(/[.!?]+$/, "").slice(0, 180);
+  return line.replace(/[.!?]+$/, "").split(/\s+/).slice(0, 10).join(" ").slice(0, 120);
 }
 
-function draftStatus(draft: MessageDraft, requireReview: boolean): MessageDraft["status"] {
+function draftStatus(draft: MessageDraft, writing: WritingPreferences): MessageDraft["status"] {
   if (!draft.recipientEmail.includes("@") || !draft.recipientName.trim()) return "needs_recipient";
   if (!draft.subject.trim() || !draft.body.trim()) return "needs_writing";
-  return requireReview ? "ready" : "approved";
+  if (wordCount(draft.body) > writing.maximumWords) return "needs_writing";
+  return writing.requireIndividualReview ? "ready" : "approved";
 }

@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.4.0 - 2026-07-31
+
+- Added five lightweight CSS background effects plus an Off option, with saved
+  preferences and reduced-motion handling.
+- Added four editable starter profiles whose order is shuffled once for a fresh
+  workspace and then persisted.
+- Added dependency-free compatible API writing for Gemini, Groq, OpenRouter,
+  DeepSeek, Kimi, Mistral, Together AI, and Cerebras.
+- Pinned named API modes to their official HTTPS endpoints, bounded provider
+  responses, and added credential-redaction and endpoint-pinning tests.
+- Reworked default recruiter copy around a factual job detail, one supplied point
+  of fit, an application note, one routing question, and an 80-word ceiling.
+- Added over-limit draft blocking, profile-aware template text, and a public
+  writing guide based on the supplied short-email framework and Instantly's
+  public guidance.
+- Added a compact operator skill, platform launchers, and first-run browser opening
+  to the Lite package without adding runtime dependencies.
+- Added separate one-click Sample Mode launchers so the backend provider lock is
+  active before the database opens.
+- Closed public-sample connection-check paths, pinned each named API to its own
+  credential variable, removed raw provider responses, and tightened mail input
+  validation.
+- Removed duplicate raw JSON fields from API responses and expanded MCP redaction
+  for alternate recipient fields, redirect addresses, and email-shaped values.
+- Added recovery for malformed profile and AI settings in local storage and
+  imported configuration files.
+- Replaced the technical front-page README with a user guide and moved coding-agent
+  context into `docs/LLM_OPERATOR_GUIDE.md`.
+- Updated MIT ownership to Vincent Quimby and documented the standard notice
+  requirement without adding a non-MIT attribution restriction.
+
+## 0.3.1 - 2026-07-31
+
+- Added a structured GitHub bug form and private support-email fallback.
+- Renamed the user-facing Report tab to **Run Summary**.
+- Added a guarded **Start fresh** flow with a browser-workspace download, optional
+  SQLite backup/reset, one-time token, and exact confirmation phrase.
+- Preserved source spreadsheets, resumes, credentials, provider configuration,
+  CLI logins, external databases, and unrelated browser storage during reset.
+- Added frontend and backend regression tests for the reset boundary.
+- Added an in-app operating guide and a manual application-entry path for users
+  who do not maintain a spreadsheet.
+- Added standard `.ics` calendar export with explicit event, range, and reminder
+  controls; the app never writes to an external calendar in the background.
+- Added keyboard-accessible panel resizing, exact width controls, and additional
+  balanced themes and accent choices.
+- Added an install-free Lite distribution with no runtime npm dependencies and a
+  hard 50 MiB archive budget, plus a packaged-app smoke test and CI size audit.
+- Deferred the XLSX parser until an Excel import begins, reducing initial browser
+  download and startup work for CSV and manual-entry users.
+
 ## 0.3.0 - 2026-07-31
 
 - Added bundled plan-backed writing bridges for ChatGPT/Codex, Claude, Cursor,

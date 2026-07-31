@@ -51,7 +51,7 @@ export interface WorkbookImportResult {
   importedSheets: string[];
 }
 
-export type SourceMode = "none" | "linked" | "uploaded" | "sample";
+export type SourceMode = "none" | "linked" | "uploaded" | "manual" | "sample";
 export type SourceSyncState = "idle" | "synced" | "saving" | "changed" | "conflict" | "error";
 
 export interface SourceFileState {
@@ -64,7 +64,7 @@ export interface SourceFileState {
   message: string;
 }
 
-export type AiConnectionMode = "codex_cli" | "claude_cli" | "cursor_cli" | "opencode_cli" | "ollama" | "openai_api" | "anthropic_api" | "gemini_api" | "groq_api" | "openrouter_api" | "openai_compatible" | "manual";
+export type AiConnectionMode = "codex_cli" | "claude_cli" | "cursor_cli" | "opencode_cli" | "ollama" | "openai_api" | "anthropic_api" | "gemini_api" | "groq_api" | "openrouter_api" | "deepseek_api" | "kimi_api" | "mistral_api" | "together_api" | "cerebras_api" | "openai_compatible" | "manual";
 export type AiControlMode = "external_operator" | "in_app" | "templates_only";
 
 export interface AiConnectionSettings {
@@ -104,9 +104,10 @@ export interface StorageSettings {
   externalSchemaReady: boolean;
 }
 
-export type ColorTheme = "terminal" | "light" | "high_contrast";
+export type ColorTheme = "terminal" | "light" | "graphite" | "mulberry" | "high_contrast";
 export type InterfaceDensity = "compact" | "comfortable";
-export type AccentColor = "green" | "cyan" | "amber";
+export type AccentColor = "green" | "cyan" | "amber" | "rose" | "violet";
+export type BackgroundEffect = "off" | "scanlines" | "grid_drift" | "signal_sweep" | "data_points" | "circuit_traces";
 
 export interface ModuleVisibility {
   calendar: boolean;
@@ -123,6 +124,7 @@ export interface WorkflowPreferences {
   colorTheme: ColorTheme;
   density: InterfaceDensity;
   accentColor: AccentColor;
+  backgroundEffect: BackgroundEffect;
   reduceMotion: boolean;
   defaultSpacingSeconds: number;
   defaultContactTarget: number;
@@ -131,7 +133,29 @@ export interface WorkflowPreferences {
   requireDraftReview: boolean;
   requireSendApproval: boolean;
   autoPrepareRedirectDrafts: boolean;
+  leftPanelWidth: number;
+  rightPanelWidth: number;
   modules: ModuleVisibility;
+}
+
+export interface WorkspaceTutorialState {
+  version: 1;
+  completed: boolean;
+  skipped: boolean;
+  lastStep: number;
+  updatedAt: string;
+}
+
+export type CalendarEventKind = "application" | "outreach" | "interview" | "reply" | "rejection" | "bounce" | "confirmation";
+export type CalendarExportScope = "visible_month" | "all_events";
+export type CalendarDestination = "google" | "outlook" | "apple" | "other";
+
+export interface CalendarPreferences {
+  version: 1;
+  destination: CalendarDestination;
+  exportScope: CalendarExportScope;
+  reminderMinutes: 0 | 10 | 30 | 60 | 1440;
+  includedKinds: Record<CalendarEventKind, boolean>;
 }
 
 export type DraftWritingMode = "template" | "manual" | "external_llm" | "in_app_llm";
@@ -397,6 +421,23 @@ export interface WorkspaceSnapshot {
   reports: BatchReport[];
   drafts: MessageDraft[];
   writing: WritingPreferences;
+  calendar: CalendarPreferences;
   storage: StorageSettings;
   workflow: WorkflowPreferences;
+}
+
+export interface WorkspaceResetPreview {
+  token: string;
+  expiresAt: string;
+  counts: Record<string, number>;
+  backupPlanned: boolean;
+  preserved: string[];
+}
+
+export interface WorkspaceResetResult {
+  resetAt: string;
+  deleted: Record<string, number>;
+  backupCreated: boolean;
+  backupFile: string;
+  preserved: string[];
 }

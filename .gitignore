@@ -1,7 +1,9 @@
 node_modules/
 dist/
 build/
+release/
 *.mcpb
+*.tgz
 data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
