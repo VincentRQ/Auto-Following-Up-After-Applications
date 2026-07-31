@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   Building2,
+  BookOpen,
   ChartNoAxesCombined,
   CalendarClock,
   CalendarDays,
@@ -14,14 +15,19 @@ import {
   FileSpreadsheet,
   FolderSync,
   Filter,
+  GripVertical,
+  Github,
   HardDriveDownload,
   Inbox,
   Link2,
+  Mail,
+  RotateCcw,
   Save,
   Settings,
   Sparkles,
   SlidersHorizontal,
   Play,
+  Plus,
   Radio,
   ShieldAlert,
   RefreshCw,
@@ -34,7 +40,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type {
   AiConnectionSettings,
   AiConnectionCheck,
@@ -43,6 +49,7 @@ import type {
   BatchInstructions,
   BatchReport,
   BatchSettings,
+  CalendarPreferences,
   CrmCompany,
   CrmCompanyDetail,
   DashboardData,
@@ -61,7 +68,9 @@ import type {
   RecoveryException,
   WorkflowPreferences,
   WritingPreferences,
+  WorkspaceResetPreview,
   WorkspaceSnapshot,
+  WorkspaceTutorialState,
 } from "./types";
 import { formatLocalInputDate, formatRelativeSchedule, isRecent } from "./lib/date";
 import { DEFAULT_PROFILES, profileKeyFromLabel, profileLabel } from "./lib/profiles";
@@ -78,6 +87,8 @@ import {
   downloadJson,
   downloadText,
   downloadIncidentReport,
+  previewWorkspaceReset,
+  resetBackendWorkspace,
   fetchDashboard,
   fetchCrmCompanies,
   fetchCrmCompany,
@@ -99,9 +110,12 @@ import {
 } from "./lib/operations";
 import {
   loadAiConnection,
+  normalizeAiConnectionSettings,
+  normalizeProfileDefinitions,
   loadIntegrationSettings,
   loadInstructions,
   loadJobs,
+  loadCalendarPreferences,
   loadMessageDrafts,
   loadProfiles,
   loadOnboardingState,
@@ -112,6 +126,9 @@ import {
   loadSourceState,
   loadWorkflowPreferences,
   loadWritingPreferences,
+  loadWorkspaceTutorialState,
+  clearLocalApplicationState,
+  saveAiConnection,
   saveJson,
   saveStoredJobs,
   saveString,
@@ -122,24 +139,38 @@ import { defaultStorageSettings, defaultWorkflowPreferences, defaultWritingPrefe
 import { WritingStudio } from "./components/WritingStudio";
 import { CustomizationView } from "./components/CustomizationView";
 import { StorageSetup } from "./components/StorageSetup";
+import { ApplicationEntryModal, type NewApplicationInput } from "./components/ApplicationEntryModal";
+import { WorkspaceTutorial, type TutorialTarget } from "./components/WorkspaceTutorial";
+import { buildCalendarEvents, buildCalendarIcs, calendarEventKinds, defaultCalendarPreferences, normalizeCalendarPreferences, selectCalendarEvents, toDateKey, type CalendarEvent } from "./lib/calendar";
+import { FALLBACK_BACKEND_URL, resolveDefaultBackendUrl } from "./lib/backend-url";
+import { decideSchedule } from "./lib/schedule";
 
 type ImportState = "idle" | "loading" | "ready" | "error";
 type WorkspaceTab = "jobs" | "writing" | "source" | "calendar" | "profiles" | "customize";
 type ImportIntent = "linked" | "upload" | null;
 
+const APP_VERSION = "0.4.0";
+const BUG_ISSUE_URL = "https://github.com/VincentRQ/Auto-Following-Up-After-Applications/issues/new?template=bug_report.yml";
+const SUPPORT_EMAIL_URL = "mailto:Vincent@Rosette.Solutions?subject=Outreach%20Console%20help&body=Version%3A%200.4.0%0A%0AWhat%20happened%3A%0A%0ASteps%20to%20reproduce%3A%0A";
+const FRESH_START_CONFIRMATION = "START FRESH";
 const defaultSchedule = formatLocalInputDate(new Date(Date.now() + 10 * 60_000));
 const defaultInstructions: BatchInstructions = {
   emailTemplate:
-    "Short recruiter follow-up. Mention the role, position ID when available, why the profile matches, and attach the resume.",
+    "Keep each recruiter follow-up under 80 words including the greeting and sign-off. Use one role-specific detail, one supplied point of fit, the position ID when available, one routing question, the correct job link, and the profile's resume.",
   targetInstructions:
     "Prioritize talent acquisition, recruiter, people operations, and HR contacts. Prefer three contacts per company when clean direct contacts exist.",
   aiInstructions:
-    "Write from the candidate's POV. Keep it professional, specific, and human. Avoid generic AI phrasing and do not overstate experience.",
+    "Write from the candidate's POV. Lead with a factual detail from the listing instead of 'I recently applied.' Keep it warm and direct. Use one question only. Do not invent praise, problems, experience, or metrics, and avoid generic AI or sales phrasing.",
 };
-const DEFAULT_BACKEND_URL = "http://127.0.0.1:43127";
+const DEFAULT_BACKEND_URL = resolveDefaultBackendUrl({
+  configured: import.meta.env.VITE_OUTREACH_BACKEND_URL,
+  production: import.meta.env.PROD,
+  location: typeof window === "undefined" ? undefined : window.location,
+});
 const LEGACY_BACKEND_URL = "http://127.0.0.1:8787";
 const defaultAiConnection: AiConnectionSettings = { controlMode: "external_operator", mode: "manual", model: "", baseUrl: "", apiKeyEnv: "", strictPlanOnly: false };
 const defaultOnboardingState: OnboardingState = { version: 2, completed: false, doNotPrompt: false, lastStep: 0, updatedAt: "" };
+const defaultTutorialState: WorkspaceTutorialState = { version: 1, completed: false, skipped: false, lastStep: 0, updatedAt: "" };
 
 type AiConnectionRecipe = { title: string; steps: string[]; command?: string; installCommand?: string; loginCommand?: string; statusCommand?: string; baseUrl?: string; apiKeyEnv?: string; docs?: string; adapter: string; billing?: string; billingSettingsUrl?: string; strictPlanInstruction?: string; modelPlaceholder?: string; planBacked?: boolean; caveat?: string };
 const aiConnectionRecipes: Record<AiConnectionSettings["mode"], AiConnectionRecipe> = {
@@ -151,9 +182,14 @@ const aiConnectionRecipes: Record<AiConnectionSettings["mode"], AiConnectionReci
   ollama: { title: "Ollama local model", steps: ["Install and start Ollama.", "Pull the model entered above.", "Verify the local API responds.", "Install and test the Ollama generation adapter."], command: "ollama pull <model-name>", baseUrl: "http://127.0.0.1:11434/api", docs: "https://docs.ollama.com/api/introduction", adapter: "The local service must call /api/generate or /api/chat. Local access requires no API key." },
   openai_api: { title: "OpenAI API", steps: ["Create a project API key in the OpenAI platform.", "Set OPENAI_API_KEY in the environment that starts the local service.", "Restart the local service, select a model, and test the connection."], baseUrl: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY", docs: "https://platform.openai.com/docs/quickstart", adapter: "Requires an OpenAI Responses API adapter. ChatGPT subscription billing is separate from API billing." },
   anthropic_api: { title: "Anthropic API", steps: ["Create an API key in the Anthropic Console.", "Set ANTHROPIC_API_KEY in the environment that starts the local service.", "Restart the local service, select a Claude model, and test the connection."], baseUrl: "https://api.anthropic.com", apiKeyEnv: "ANTHROPIC_API_KEY", docs: "https://docs.anthropic.com/en/api/getting-started", adapter: "Requires an Anthropic Messages API adapter; this is not the OpenAI-compatible request format." },
-  gemini_api: { title: "Google Gemini API", steps: ["Create a restricted key in Google AI Studio.", "Set GEMINI_API_KEY in the environment that starts the local service.", "Restart the local service, select a Gemini model, and test the connection."], baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", apiKeyEnv: "GEMINI_API_KEY", docs: "https://ai.google.dev/gemini-api/docs/openai", adapter: "Can use the OpenAI-compatible adapter with Gemini's compatibility endpoint." },
-  groq_api: { title: "Groq API", steps: ["Create a Groq API key.", "Set GROQ_API_KEY in the environment that starts the local service.", "Restart the local service, select a supported model, and test the connection."], baseUrl: "https://api.groq.com/openai/v1", apiKeyEnv: "GROQ_API_KEY", docs: "https://console.groq.com/docs/openai", adapter: "Can use the OpenAI-compatible adapter; unsupported request fields must be omitted." },
-  openrouter_api: { title: "OpenRouter API", steps: ["Create an OpenRouter key and optionally give it a spending limit.", "Set OPENROUTER_API_KEY in the environment that starts the local service.", "Restart the local service, enter a provider/model slug, and test the connection."], baseUrl: "https://openrouter.ai/api/v1", apiKeyEnv: "OPENROUTER_API_KEY", docs: "https://openrouter.ai/docs/api/reference/authentication", adapter: "Can use the OpenAI-compatible adapter and provides access to multiple model providers." },
+  gemini_api: { title: "Google Gemini API", steps: ["Create a restricted key in Google AI Studio.", "Set GEMINI_API_KEY in the environment that starts the local service.", "Restart the local service, select a Gemini model, and test the connection."], baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", apiKeyEnv: "GEMINI_API_KEY", docs: "https://ai.google.dev/gemini-api/docs/openai", adapter: "Bundled: uses Gemini's OpenAI-compatible endpoint through the dependency-free API bridge." },
+  groq_api: { title: "Groq API", steps: ["Create a Groq API key.", "Set GROQ_API_KEY in the environment that starts the local service.", "Restart the local service, select a supported model, and test the connection."], baseUrl: "https://api.groq.com/openai/v1", apiKeyEnv: "GROQ_API_KEY", docs: "https://console.groq.com/docs/openai", adapter: "Bundled: uses Groq's OpenAI-compatible endpoint through the dependency-free API bridge." },
+  openrouter_api: { title: "OpenRouter API", steps: ["Create an OpenRouter key and optionally give it a spending limit.", "Set OPENROUTER_API_KEY in the environment that starts the local service.", "Restart the local service, enter a provider/model slug, and test the connection."], baseUrl: "https://openrouter.ai/api/v1", apiKeyEnv: "OPENROUTER_API_KEY", docs: "https://openrouter.ai/docs/api/reference/authentication", adapter: "Bundled: uses OpenRouter's OpenAI-compatible endpoint and supports its provider/model slugs." },
+  deepseek_api: { title: "DeepSeek API", steps: ["Create an API key in the DeepSeek platform.", "Set DEEPSEEK_API_KEY in the environment that starts the local service.", "Restart the local service, enter a current model ID from the official docs, and test the connection."], baseUrl: "https://api.deepseek.com", apiKeyEnv: "DEEPSEEK_API_KEY", docs: "https://api-docs.deepseek.com/api/deepseek-api/", adapter: "Bundled: uses DeepSeek's OpenAI-compatible endpoint. Model names can change, so copy the current ID from the official docs.", modelPlaceholder: "Current DeepSeek model ID" },
+  kimi_api: { title: "Kimi API by Moonshot AI", steps: ["Create an API key in the Kimi Open Platform for your region.", "Set MOONSHOT_API_KEY in the environment that starts the local service.", "Restart the local service, enter a current Kimi model ID, and test the connection."], baseUrl: "https://api.moonshot.ai/v1", apiKeyEnv: "MOONSHOT_API_KEY", docs: "https://platform.kimi.ai/docs/api/overview", adapter: "Bundled: uses Kimi's OpenAI-compatible international endpoint. Other regions may require a custom adapter.", modelPlaceholder: "Current Kimi model ID" },
+  mistral_api: { title: "Mistral API", steps: ["Create an API key in Mistral Studio.", "Set MISTRAL_API_KEY in the environment that starts the local service.", "Restart the local service, enter a current model ID, and test the connection."], baseUrl: "https://api.mistral.ai/v1", apiKeyEnv: "MISTRAL_API_KEY", docs: "https://docs.mistral.ai/api", adapter: "Bundled: uses Mistral's OpenAI-compatible chat-completions endpoint.", modelPlaceholder: "Current Mistral model ID" },
+  together_api: { title: "Together AI API", steps: ["Create a Together AI API key.", "Set TOGETHER_API_KEY in the environment that starts the local service.", "Restart the local service, choose a hosted model ID, and test the connection."], baseUrl: "https://api.together.ai/v1", apiKeyEnv: "TOGETHER_API_KEY", docs: "https://docs.together.ai/docs/inference/openai-compatibility", adapter: "Bundled: uses Together AI's OpenAI-compatible endpoint for hosted open models.", modelPlaceholder: "Together model ID" },
+  cerebras_api: { title: "Cerebras Inference API", steps: ["Create a Cerebras Inference API key.", "Set CEREBRAS_API_KEY in the environment that starts the local service.", "Restart the local service, choose a supported model ID, and test the connection."], baseUrl: "https://api.cerebras.ai/v1", apiKeyEnv: "CEREBRAS_API_KEY", docs: "https://inference-docs.cerebras.ai/quickstart", adapter: "Bundled: uses Cerebras's mostly OpenAI-compatible inference endpoint.", modelPlaceholder: "Supported Cerebras model ID" },
   openai_compatible: { title: "Other OpenAI-compatible API", steps: ["Obtain the provider's base URL, model identifier, and API key.", "Store the key in a named environment variable used by the local service.", "Restart the local service and test a minimal request before enabling drafting."], baseUrl: "https://provider.example/v1", apiKeyEnv: "PROVIDER_API_KEY", adapter: "Compatibility varies. The adapter must handle the provider's endpoint and response differences." },
 };
 const emptySourceState: SourceFileState = {
@@ -187,7 +223,7 @@ export function App() {
   const [contactTarget, setContactTarget] = useState(() => loadWorkflowPreferences(defaultWorkflowPreferences).defaultContactTarget);
   const [runMode, setRunMode] = useState<RunMode>("dry_run");
   const [backendUrl, setBackendUrl] = useState(() => {
-    const configured = loadString(storageKeys.backendUrl, import.meta.env.VITE_OUTREACH_BACKEND_URL ?? DEFAULT_BACKEND_URL);
+    const configured = loadString(storageKeys.backendUrl, DEFAULT_BACKEND_URL);
     return safeBackendUrl(configured === LEGACY_BACKEND_URL ? DEFAULT_BACKEND_URL : configured);
   });
   const [aiConnection, setAiConnection] = useState<AiConnectionSettings>(() => loadAiConnection(defaultAiConnection));
@@ -198,6 +234,15 @@ export function App() {
     const saved = loadOnboardingState(defaultOnboardingState);
     return (saved.version !== 2 || !saved.completed) && !saved.doNotPrompt;
   });
+  const [tutorial, setTutorial] = useState<WorkspaceTutorialState>(() => loadWorkspaceTutorialState(defaultTutorialState));
+  const [showTutorial, setShowTutorial] = useState(() => {
+    const setup = loadOnboardingState(defaultOnboardingState);
+    const guide = loadWorkspaceTutorialState(defaultTutorialState);
+    return setup.completed && !guide.completed && !guide.skipped;
+  });
+  const [tutorialTarget, setTutorialTarget] = useState<TutorialTarget | "">("");
+  const [showApplicationEntry, setShowApplicationEntry] = useState(false);
+  const [showFreshStart, setShowFreshStart] = useState(false);
   const [onboardingEntryStep, setOnboardingEntryStep] = useState(() => loadOnboardingState(defaultOnboardingState).lastStep);
   const [instructions, setInstructions] = useState<BatchInstructions>(() => loadInstructions(defaultInstructions));
   const [importState, setImportState] = useState<ImportState>("idle");
@@ -209,6 +254,7 @@ export function App() {
   });
   const [sourceHandle, setSourceHandle] = useState<LocalFileHandle | null>(null);
   const [autoSync, setAutoSync] = useState(true);
+  const [calendarPreferences, setCalendarPreferences] = useState<CalendarPreferences>(() => loadCalendarPreferences(defaultCalendarPreferences));
   const [importIntent, setImportIntent] = useState<ImportIntent>(null);
   const [report, setReport] = useState<BatchReport | null>(null);
   const [reportHistory, setReportHistory] = useState<BatchReport[]>(loadReports);
@@ -335,7 +381,7 @@ export function App() {
   }, [backendUrl]);
 
   useEffect(() => {
-    saveJson(storageKeys.aiConnection, aiConnection);
+    saveAiConnection(aiConnection);
   }, [aiConnection]);
 
   useEffect(() => {
@@ -351,8 +397,16 @@ export function App() {
   }, [onboarding]);
 
   useEffect(() => {
+    saveJson(storageKeys.tutorial, tutorial);
+  }, [tutorial]);
+
+  useEffect(() => {
     saveJson(storageKeys.sourceState, sourceState);
   }, [sourceState]);
+
+  useEffect(() => {
+    saveJson(storageKeys.calendar, calendarPreferences);
+  }, [calendarPreferences]);
 
   useEffect(() => {
     saveJson(storageKeys.workflow, workflow);
@@ -562,7 +616,16 @@ export function App() {
     if (intent === "upload") compatibilityInputRef.current?.click();
   }
 
-  function loadSampleRows() {
+  async function loadSampleRows() {
+    let currentSetup = setupStatus;
+    if (!currentSetup && backendUrl) {
+      try {
+        currentSetup = await fetchSetupStatus(backendUrl);
+        setSetupStatus(currentSetup);
+      } catch {
+        currentSetup = null;
+      }
+    }
     const now = new Date().toISOString();
     const sampleProfile: ProfileKey = "customer_success";
     const sample: JobRow[] = [
@@ -579,9 +642,15 @@ export function App() {
     setSourceHandle(null);
     void forgetLinkedSource();
     lastSerializedRef.current = serializeJobsToCsv(sample);
-    setSourceState({ ...emptySourceState, mode: "sample", fileName: "sample-applications.csv", format: "csv", syncState: "synced", lastSyncedAt: now, message: "Sample data is isolated and cannot call paid or email providers." });
+    const sampleMode = currentSetup?.publicSampleMode === true ? "locked" : currentSetup ? "private" : "unknown";
+    const sampleMessage = sampleMode === "locked"
+      ? "Synthetic rows loaded under the backend's Public Sample Mode lock."
+      : sampleMode === "private"
+        ? "Synthetic rows loaded in Private Operator Mode. Provider actions still require their normal gates."
+        : "Synthetic rows loaded. The local backend mode could not be verified; no provider was called while loading this sample.";
+    setSourceState({ ...emptySourceState, mode: "sample", fileName: "sample-applications.csv", format: "csv", syncState: "synced", lastSyncedAt: now, message: sampleMessage });
     setImportState("ready");
-    pushConsole("Loaded public sample rows.");
+    pushConsole(sampleMode === "locked" ? "Loaded synthetic rows in locked Public Sample Mode." : sampleMode === "private" ? "Loaded synthetic rows in Private Operator Mode." : "Loaded synthetic rows; backend mode is unverified.");
   }
 
   function addProfile() {
@@ -660,7 +729,67 @@ export function App() {
   }
 
   function updateJob(jobId: string, update: Partial<JobRow>) {
-    setJobs((previous) => previous.map((job) => (job.id === jobId ? { ...job, ...update } : job)));
+    setJobs((previous) => previous.map((job) => {
+      if (job.id !== jobId) return job;
+      const nextProfile = update.profile ?? job.profile;
+      return { ...job, ...update, profileLabel: profileLabel(nextProfile, profiles), lastWorkedAt: new Date().toISOString() };
+    }));
+    markApplicationDataChanged("Application edits are saved in this workspace.");
+  }
+
+  function addApplication(value: NewApplicationInput) {
+    const now = new Date().toISOString();
+    const id = `manual-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`;
+    const job: JobRow = {
+      id,
+      originalRow: jobs.reduce((maximum, item) => Math.max(maximum, item.originalRow), 1) + 1,
+      profile: value.profile,
+      profileLabel: profileLabel(value.profile, profiles),
+      company: value.company,
+      roleTitle: value.roleTitle,
+      jobDescription: value.jobDescription,
+      jobUrl: value.jobUrl,
+      jobId: value.jobId || inferJobId(value.jobUrl),
+      source: value.source,
+      status: value.status,
+      appliedAt: value.appliedDate ? `${value.appliedDate}T12:00:00.000Z` : now,
+      lastWorkedAt: now,
+      sentAt: "",
+      contactsFound: null,
+      notes: value.notes,
+      importedAt: now,
+    };
+    setJobs((previous) => [...previous, job]);
+    setProfile(value.profile);
+    setSelectedIds(new Set([id]));
+    setStatusFilter("all");
+    setWorkspaceTab("jobs");
+    setShowApplicationEntry(false);
+    markApplicationDataChanged("New applications entered here are saved locally. Export a CSV any time, or link a CSV for automatic write-back.");
+    pushConsole(`Added ${job.roleTitle} at ${job.company}.`);
+  }
+
+  function deleteJob(job: JobRow) {
+    if (!window.confirm(`Remove ${job.roleTitle || "this application"} at ${job.company || "this company"} from the workspace?`)) return;
+    setJobs((previous) => previous.filter((item) => item.id !== job.id));
+    setDrafts((previous) => previous.filter((draft) => draft.jobRowId !== job.id));
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      next.delete(job.id);
+      return next;
+    });
+    markApplicationDataChanged("The application was removed from this workspace.");
+    pushConsole(`Removed ${job.roleTitle || "application"} at ${job.company || "unknown company"}.`);
+  }
+
+  function markApplicationDataChanged(message: string) {
+    setSourceState((previous) => {
+      if (previous.mode === "linked") {
+        return { ...previous, syncState: "changed", message: previous.format === "csv" ? "Local edits are waiting to sync to the linked CSV." : "Local edits are saved. Export a managed CSV to carry them back to the working file." };
+      }
+      if (previous.mode === "uploaded") return { ...previous, syncState: "changed", message };
+      return { mode: "manual", fileName: "In-app application list", format: "unknown", syncState: "changed", lastSyncedAt: "", lastModified: 0, message };
+    });
   }
 
   function armOrRun() {
@@ -680,7 +809,13 @@ export function App() {
       setRightTab("debug");
       return;
     }
-    if (new Date(settings.scheduledAt).getTime() <= Date.now()) {
+    const scheduleDecision = decideSchedule(settings.scheduledAt);
+    if (scheduleDecision === "invalid") {
+      pushConsole("Launch blocked: choose a valid start date and time.");
+      return;
+    }
+    if (scheduleDecision === "run_now") {
+      setArmedSettings(null);
       void runBatch(settings);
       return;
     }
@@ -750,9 +885,27 @@ export function App() {
       reports: reportHistory,
       drafts,
       writing,
+      calendar: calendarPreferences,
       storage: normalizeStorageSettings(storage),
       workflow,
     };
+  }
+
+  async function startFresh(clearBackend: boolean, token: string, confirmation: string) {
+    const createdAt = new Date().toISOString();
+    downloadJson(`outreach-console-before-reset-${createdAt.replace(/[:.]/g, "-")}.json`, {
+      type: "outreach-console-fresh-start-backup",
+      version: 1,
+      createdAt,
+      workspace: buildWorkspaceSnapshot(),
+      configuration: { workflow, storage: normalizeStorageSettings(storage), writing, calendar: calendarPreferences, aiConnection, integrations },
+      source: sourceState,
+    });
+    if (clearBackend) await resetBackendWorkspace(backendUrl, token, confirmation);
+    await forgetLinkedSource();
+    await clearLocalApplicationState();
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    window.location.reload();
   }
 
   async function importWorkspace(file: File) {
@@ -774,7 +927,7 @@ export function App() {
   }
 
   function applyWorkspaceSnapshot(snapshot: Partial<WorkspaceSnapshot>) {
-    const nextProfiles = snapshot.profiles?.length ? snapshot.profiles : DEFAULT_PROFILES;
+    const nextProfiles = normalizeProfileDefinitions(snapshot.profiles, DEFAULT_PROFILES);
     const nextJobs = Array.isArray(snapshot.jobs) ? snapshot.jobs : [];
     const nextReports = Array.isArray(snapshot.reports) ? snapshot.reports : [];
     setProfiles(nextProfiles);
@@ -785,6 +938,7 @@ export function App() {
     setReport(nextReports[0] ?? null);
     setDrafts(Array.isArray(snapshot.drafts) ? snapshot.drafts : []);
     setWriting(normalizeWritingPreferences(snapshot.writing));
+    setCalendarPreferences(normalizeCalendarPreferences(snapshot.calendar));
     setStorage(normalizeStorageSettings(snapshot.storage ?? storage));
     setWorkflow(normalizeWorkflowPreferences(snapshot.workflow));
     setSelectedIds(new Set());
@@ -798,6 +952,7 @@ export function App() {
       workflow,
       storage: normalizeStorageSettings(storage),
       writing,
+      calendar: calendarPreferences,
       aiConnection,
       integrations,
     });
@@ -811,6 +966,7 @@ export function App() {
         workflow?: Partial<WorkflowPreferences>;
         storage?: Partial<StorageSettings>;
         writing?: Partial<WritingPreferences>;
+        calendar?: Partial<CalendarPreferences>;
         aiConnection?: Partial<AiConnectionSettings>;
         integrations?: IntegrationSettings;
       };
@@ -818,7 +974,8 @@ export function App() {
       setWorkflow(normalizeWorkflowPreferences(value.workflow));
       setStorage(normalizeStorageSettings(value.storage));
       setWriting(normalizeWritingPreferences(value.writing));
-      if (value.aiConnection) setAiConnection({ ...defaultAiConnection, ...value.aiConnection });
+      setCalendarPreferences(normalizeCalendarPreferences(value.calendar));
+      if (value.aiConnection) setAiConnection(normalizeAiConnectionSettings(value.aiConnection, defaultAiConnection));
       if (value.integrations) setIntegrations({ ...defaultIntegrationSettings, ...value.integrations });
       pushConsole("Configuration imported. Credentials were not read or stored.");
     } catch (error) {
@@ -828,6 +985,7 @@ export function App() {
 
   function resetCustomization() {
     setWorkflow(defaultWorkflowPreferences);
+    setCalendarPreferences(defaultCalendarPreferences);
     setSpacingSeconds(defaultWorkflowPreferences.defaultSpacingSeconds);
     setContactTarget(defaultWorkflowPreferences.defaultContactTarget);
     pushConsole("Interface and workflow preferences reset to public defaults.");
@@ -960,6 +1118,8 @@ export function App() {
     const completed: OnboardingState = { ...onboarding, version: 2, completed: true, doNotPrompt: false, lastStep: 4, updatedAt: new Date().toISOString() };
     setOnboarding(completed);
     setShowOnboarding(false);
+    setTutorial({ ...defaultTutorialState, updatedAt: new Date().toISOString() });
+    setShowTutorial(true);
     if (storage.mode !== "browser") {
       await runHealthCheck();
       await refreshBackendData();
@@ -1034,6 +1194,73 @@ export function App() {
     setShowOnboarding(true);
   }
 
+  function openTutorial() {
+    setTutorialTarget("");
+    setShowTutorial(true);
+  }
+
+  function navigateTutorial(target: TutorialTarget) {
+    setTutorialTarget(target);
+    if (target === "source") setWorkspaceTab("source");
+    if (target === "tabs") setWorkspaceTab(workflow.modules.profiles ? "profiles" : "jobs");
+    if (["jobs", "left", "right", "mailbox"].includes(target)) setWorkspaceTab("jobs");
+    if (target === "writing") setWorkspaceTab("writing");
+    if (target === "calendar") setWorkspaceTab(workflow.modules.calendar ? "calendar" : "customize");
+    if (target === "customize") setWorkspaceTab("customize");
+    if (target === "right") setRightTab("queue");
+    if (target === "mailbox") setRightTab(workflow.modules.mailbox ? "mailbox" : workflow.modules.recovery ? "recovery" : "report");
+    window.requestAnimationFrame(() => document.querySelector(`[data-tutorial-region="${target}"]`)?.scrollIntoView({ behavior: workflow.reduceMotion ? "auto" : "smooth", block: "nearest" }));
+  }
+
+  function recordTutorialStep(step: number) {
+    setTutorial((previous) => previous.lastStep === step ? previous : { ...previous, lastStep: step, updatedAt: new Date().toISOString() });
+  }
+
+  function skipTutorial() {
+    setTutorial((previous) => ({ ...previous, skipped: true, completed: false, updatedAt: new Date().toISOString() }));
+    setShowTutorial(false);
+    setTutorialTarget("");
+  }
+
+  function completeTutorial() {
+    setTutorial((previous) => ({ ...previous, completed: true, skipped: false, updatedAt: new Date().toISOString() }));
+    setShowTutorial(false);
+    setTutorialTarget("");
+  }
+
+  function resizePanel(panel: "left" | "right", delta: number) {
+    setWorkflow((previous) => normalizeWorkflowPreferences({
+      ...previous,
+      [panel === "left" ? "leftPanelWidth" : "rightPanelWidth"]: previous[panel === "left" ? "leftPanelWidth" : "rightPanelWidth"] + delta,
+    }));
+  }
+
+  function beginPanelResize(panel: "left" | "right", event: ReactPointerEvent<HTMLDivElement>) {
+    if (window.matchMedia("(max-width: 1180px)").matches) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = panel === "left" ? workflow.leftPanelWidth : workflow.rightPanelWidth;
+    document.body.classList.add("resizing-panels");
+    const move = (pointerEvent: PointerEvent) => {
+      const delta = pointerEvent.clientX - startX;
+      setWorkflow((previous) => normalizeWorkflowPreferences({ ...previous, [panel === "left" ? "leftPanelWidth" : "rightPanelWidth"]: startWidth + (panel === "left" ? delta : -delta) }));
+    };
+    const stop = () => {
+      document.body.classList.remove("resizing-panels");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+    window.addEventListener("pointercancel", stop, { once: true });
+  }
+
+  function resetPanelSizes() {
+    setWorkflow((previous) => ({ ...previous, leftPanelWidth: defaultWorkflowPreferences.leftPanelWidth, rightPanelWidth: defaultWorkflowPreferences.rightPanelWidth }));
+    pushConsole("Panel sizes reset.");
+  }
+
   const integrationNeedsAttention = setupStatus?.providers?.some((item) => !["configured", "disabled"].includes(item.status)) ?? false;
   const systemState = storage.mode === "browser" && onboarding.completed
     ? { state: "ready", label: "Browser mode ready" }
@@ -1044,7 +1271,7 @@ export function App() {
 
   return (
     <main className="shell" {...workflowAttributes(workflow)}>
-      <section className="topbar">
+      <section className="topbar" data-tutorial-region="top" data-tutorial-active={tutorialTarget === "top" ? "true" : undefined}>
         <div className="brand">
           <span className="brand-mark"><Terminal size={22} /></span>
           <div>
@@ -1057,6 +1284,14 @@ export function App() {
             <Settings size={16} />
             <span>Setup wizard</span>
           </button>
+          <button className="wizard-chip guide-chip" onClick={openTutorial} title="Open the step-by-step operating guide">
+            <BookOpen size={16} />
+            <span>Guide</span>
+          </button>
+          <a className="wizard-chip feedback-chip" href={BUG_ISSUE_URL} target="_blank" rel="noreferrer" title="Open a structured GitHub bug ticket">
+            <Bug size={16} />
+            <span>Share a bug</span>
+          </a>
           <button className={`system-chip ${systemState.state}`} onClick={() => { setWorkspaceTab("jobs"); setRightTab("setup"); void runHealthCheck(); void refreshBackendData(); }}>
             <Radio size={16} />
             <span>{systemState.label}</span>
@@ -1074,7 +1309,7 @@ export function App() {
 
       {!onboarding.completed && <section className="setup-reminder"><AlertTriangle size={16} /><div><strong>Initial setup is not finished</strong><span>Your saved work is intact. Resume at step {onboarding.lastStep + 1} when ready.</span></div><button className="small-button compact" onClick={() => openOnboarding(onboarding.lastStep)}>Resume setup</button></section>}
 
-      <nav className="workspace-tabs" aria-label="Workspace views">
+      <nav className="workspace-tabs" aria-label="Workspace views" data-tutorial-region="tabs" data-tutorial-active={tutorialTarget === "tabs" ? "true" : undefined}>
         <button className={workspaceTab === "jobs" ? "active" : ""} onClick={() => setWorkspaceTab("jobs")}><FileSpreadsheet size={16} /> Jobs</button>
         <button className={workspaceTab === "writing" ? "active" : ""} onClick={() => setWorkspaceTab("writing")}><Sparkles size={16} /> Writing</button>
         <button className={workspaceTab === "source" ? "active" : ""} onClick={() => setWorkspaceTab("source")}><FolderSync size={16} /> Data Source</button>
@@ -1083,8 +1318,8 @@ export function App() {
         <button className={workspaceTab === "customize" ? "active" : ""} onClick={() => setWorkspaceTab("customize")}><SlidersHorizontal size={16} /> Customize</button>
       </nav>
 
-      <section className="layout">
-        <aside className="side-panel">
+      <section className="layout" style={{ "--left-panel-width": `${workflow.leftPanelWidth}px`, "--right-panel-width": `${workflow.rightPanelWidth}px` } as CSSProperties}>
+        <aside className="side-panel" data-tutorial-region="left" data-tutorial-active={tutorialTarget === "left" ? "true" : undefined}>
           <PanelTitle icon={<FolderSync size={16} />} label="Data Source" />
           <button className={`source-summary ${sourceState.syncState}`} onClick={() => setWorkspaceTab("source")}>
             <span>{sourceState.fileName || "No file connected"}</span>
@@ -1149,8 +1384,14 @@ export function App() {
           </button>
         </aside>
 
+        <div className="panel-resizer" role="separator" aria-label="Resize left column" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={440} aria-valuenow={workflow.leftPanelWidth} tabIndex={0} onPointerDown={(event) => beginPanelResize("left", event)} onKeyDown={(event) => {
+          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+          event.preventDefault();
+          resizePanel("left", event.key === "ArrowLeft" ? -10 : 10);
+        }}><GripVertical size={16} /></div>
+
         <section className="main-panel">
-          <div hidden={workspaceTab !== "jobs"}>
+          <div hidden={workspaceTab !== "jobs"} data-tutorial-region="jobs" data-tutorial-active={tutorialTarget === "jobs" ? "true" : undefined}>
           <div className="metrics-grid">
             <Metric label="Profile" value={profileLabel(profile, profiles)} />
             <Metric label="Rows" value={stats.total.toString()} />
@@ -1212,6 +1453,7 @@ export function App() {
             </select>
             <button className="small-button" onClick={selectVisible}><Check size={15} /> Select</button>
             <button className="small-button" onClick={clearSelection}>Clear</button>
+            <button className="small-button add-application-button" onClick={() => setShowApplicationEntry(true)}><Plus size={15} /> Add application</button>
           </div>
 
           <div className="job-table" aria-label="Application jobs" tabIndex={0}>
@@ -1240,11 +1482,12 @@ export function App() {
               job={editableJob}
               profiles={profiles}
               onChange={(update) => updateJob(editableJob.id, update)}
+              onDelete={() => deleteJob(editableJob)}
             />
           )}
           </div>
           {workspaceTab === "writing" && (
-            <WritingStudio
+            <div data-tutorial-region="writing" data-tutorial-active={tutorialTarget === "writing" ? "true" : undefined}><WritingStudio
               selectedJobs={selectedJobs}
               jobs={jobs}
               drafts={drafts}
@@ -1255,10 +1498,10 @@ export function App() {
               onPreferences={(value) => setWriting(normalizeWritingPreferences(value))}
               onDrafts={setDrafts}
               onGenerate={generateDraftMessages}
-            />
+            /></div>
           )}
           {workspaceTab === "source" && (
-            <SourceWorkspace
+            <div data-tutorial-region="source" data-tutorial-active={tutorialTarget === "source" ? "true" : undefined}><SourceWorkspace
               source={sourceState}
               rows={jobs.length}
               warnings={importMeta.warnings}
@@ -1272,13 +1515,14 @@ export function App() {
               onPull={() => void pullLinkedSource()}
               onSave={() => void saveLinkedSource()}
               onExportCsv={() => downloadText(sourceState.fileName.replace(/\.(xlsx|csv)$/i, "") + "-synced.csv", serializeJobsToCsv(jobs), "text/csv")}
-              onSample={loadSampleRows}
+              onSample={() => void loadSampleRows()}
               onClear={clearWorkspace}
               onExportWorkspace={exportWorkspace}
               onImportWorkspace={() => workspaceInputRef.current?.click()}
-            />
+              onAddApplication={() => setShowApplicationEntry(true)}
+            /></div>
           )}
-          {workspaceTab === "calendar" && <CalendarWorkspace jobs={jobs} />}
+          {workspaceTab === "calendar" && <CalendarWorkspace jobs={jobs} preferences={calendarPreferences} onPreferences={setCalendarPreferences} tutorialActive={tutorialTarget === "calendar"} />}
           {workspaceTab === "profiles" && (
             <ProfileManager
               profiles={profiles}
@@ -1295,21 +1539,28 @@ export function App() {
             />
           )}
           {workspaceTab === "customize" && (
-            <CustomizationView
+            <div data-tutorial-region="customize" data-tutorial-active={tutorialTarget === "customize" ? "true" : undefined}><CustomizationView
               value={workflow}
               onChange={(value) => setWorkflow(normalizeWorkflowPreferences(value))}
               onReset={resetCustomization}
               onExport={exportConfiguration}
               onImport={() => configurationInputRef.current?.click()}
-            />
+              onResetPanels={resetPanelSizes}
+            /></div>
           )}
         </section>
 
-        <aside className="report-panel">
+        <div className="panel-resizer" role="separator" aria-label="Resize right column" aria-orientation="vertical" aria-valuemin={260} aria-valuemax={520} aria-valuenow={workflow.rightPanelWidth} tabIndex={0} onPointerDown={(event) => beginPanelResize("right", event)} onKeyDown={(event) => {
+          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+          event.preventDefault();
+          resizePanel("right", event.key === "ArrowLeft" ? 10 : -10);
+        }}><GripVertical size={16} /></div>
+
+        <aside className="report-panel" data-tutorial-region={tutorialTarget === "mailbox" ? "mailbox" : "right"} data-tutorial-active={tutorialTarget === "right" || tutorialTarget === "mailbox" ? "true" : undefined}>
           <div className="right-tabs">
             <button className={rightTab === "report" ? "active" : ""} onClick={() => setRightTab("report")}>
               <Send size={15} />
-              Report
+              Run Summary
             </button>
             <button className={rightTab === "queue" ? "active" : ""} onClick={() => setRightTab("queue")}>
               <Check size={15} />
@@ -1336,7 +1587,7 @@ export function App() {
 
           {rightTab === "report" ? (
             <>
-              <PanelTitle icon={<Send size={16} />} label="Report" />
+              <PanelTitle icon={<Send size={16} />} label="Run Summary" />
               {report ? (
                 <ReportView
                   report={report}
@@ -1345,7 +1596,7 @@ export function App() {
                   onExportCsv={() => downloadText(`${report.runId}.csv`, reportToCsv(report), "text/csv")}
                 />
               ) : (
-                <div className="empty-report">No run report.</div>
+                <div className="empty-report">No run summary yet.</div>
               )}
             </>
           ) : rightTab === "queue" ? (
@@ -1381,7 +1632,7 @@ export function App() {
           ) : rightTab === "stats" ? (
             <><PanelTitle icon={<ChartNoAxesCombined size={16} />} label="Status & Activity" /><StatsView dashboard={dashboard} /></>
           ) : rightTab === "setup" ? (
-            <><PanelTitle icon={<Settings size={16} />} label="Setup" /><SetupView status={setupStatus} health={backendHealth} backendUrl={backendUrl} profiles={profiles} aiConnection={aiConnection} aiConnectionCheck={aiConnectionCheck} integrations={integrations} storage={storage} storageStatus={externalStorageStatus} onStorageChange={setStorage} onStorageTest={() => void testExternalStorage()} onStoragePull={() => void pullExternalWorkspace()} onStoragePush={() => void pushExternalWorkspace()} onAiChange={setAiConnection} onAiCheck={() => void runAiConnectionCheck()} onOpenOnboarding={() => openOnboarding(0)} onCheck={() => { void runHealthCheck(); void refreshBackendData(); if (aiConnection.controlMode === "in_app") void runAiConnectionCheck(); }} onExportIncident={() => void downloadIncidentReport(backendUrl)} /></>
+            <><PanelTitle icon={<Settings size={16} />} label="Setup" /><SetupView status={setupStatus} health={backendHealth} backendUrl={backendUrl} profiles={profiles} aiConnection={aiConnection} aiConnectionCheck={aiConnectionCheck} integrations={integrations} storage={storage} storageStatus={externalStorageStatus} onStorageChange={setStorage} onStorageTest={() => void testExternalStorage()} onStoragePull={() => void pullExternalWorkspace()} onStoragePush={() => void pushExternalWorkspace()} onAiChange={setAiConnection} onAiCheck={() => void runAiConnectionCheck()} onOpenOnboarding={() => openOnboarding(0)} onStartFresh={() => setShowFreshStart(true)} onCheck={() => { void runHealthCheck(); void refreshBackendData(); if (aiConnection.controlMode === "in_app") void runAiConnectionCheck(); }} onExportIncident={() => void downloadIncidentReport(backendUrl)} /></>
           ) : (
             <>
               <PanelTitle icon={<Bug size={16} />} label="Potential Issues" />
@@ -1459,9 +1710,71 @@ export function App() {
           </section>
         </div>
       )}
+      {showFreshStart && <FreshStartModal backendUrl={backendUrl} browserCounts={{ jobs: jobs.length, drafts: drafts.length, summaries: reportHistory.length, profiles: profiles.length }} onClose={() => setShowFreshStart(false)} onComplete={startFresh} />}
       {showOnboarding && <OnboardingWizard initialStep={onboardingEntryStep} initialSettings={integrations} profiles={profiles} aiConnection={aiConnection} aiConnectionCheck={aiConnectionCheck} backendUrl={backendUrl} storage={storage} onStorageChange={setStorage} onAiChange={setAiConnection} onAiCheck={() => void runAiConnectionCheck()} onBackendUrlChange={setBackendUrl} onManageProfiles={manageProfilesFromOnboarding} onClose={closeOnboarding} onComplete={completeOnboarding} />}
+      {showApplicationEntry && <ApplicationEntryModal profiles={profiles} activeProfile={profile} onClose={() => setShowApplicationEntry(false)} onSave={addApplication} />}
+      {showTutorial && !showOnboarding && <WorkspaceTutorial initialStep={tutorial.lastStep} onNavigate={navigateTutorial} onProgress={recordTutorialStep} onClose={() => { setShowTutorial(false); setTutorialTarget(""); }} onSkip={skipTutorial} onComplete={completeTutorial} />}
     </main>
   );
+}
+
+function FreshStartModal({ backendUrl, browserCounts, onClose, onComplete }: {
+  backendUrl: string;
+  browserCounts: { jobs: number; drafts: number; summaries: number; profiles: number };
+  onClose: () => void;
+  onComplete: (clearBackend: boolean, token: string, confirmation: string) => Promise<void>;
+}) {
+  const [preview, setPreview] = useState<WorkspaceResetPreview | null>(null);
+  const [previewState, setPreviewState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [clearBackend, setClearBackend] = useState(true);
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+  const [running, setRunning] = useState(false);
+  const backendRecords = preview ? Object.values(preview.counts).reduce((sum, count) => sum + count, 0) : 0;
+
+  async function loadPreview() {
+    setPreviewState("loading");
+    setPreview(null);
+    setError("");
+    try {
+      const result = await previewWorkspaceReset(backendUrl);
+      setPreview(result);
+      setPreviewState("ready");
+      setClearBackend(true);
+    } catch (caught) {
+      setPreviewState("unavailable");
+      setClearBackend(false);
+      setError(caught instanceof Error ? caught.message : "The local database could not be checked.");
+    }
+  }
+
+  useEffect(() => { void loadPreview(); }, [backendUrl]);
+
+  async function confirmFreshStart() {
+    setRunning(true);
+    setError("");
+    try {
+      await onComplete(clearBackend, preview?.token ?? "", confirmation);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The console could not be reset.");
+      setRunning(false);
+      if (clearBackend) void loadPreview();
+    }
+  }
+
+  return <div className="modal-backdrop fresh-start-backdrop" role="presentation" onMouseDown={() => { if (!running) onClose(); }}>
+    <section className="fresh-start-modal" role="dialog" aria-modal="true" aria-labelledby="fresh-start-title" onMouseDown={(event) => event.stopPropagation()}>
+      <header><div><span className="eyebrow">Local maintenance</span><h2 id="fresh-start-title">Start with a clean console</h2></div><button className="icon-button" title="Close" disabled={running} onClick={onClose}><X size={18} /></button></header>
+      <p>This restarts first-run setup and clears Outreach Console history. A JSON workspace backup downloads first.</p>
+      <div className="fresh-start-preserves"><ShieldAlert size={17} /><div><strong>Your connected files remain intact</strong><span>No spreadsheet, resume, <code>.env</code> file, provider credential, CLI login, or external database is deleted or modified. The console only forgets its saved link to those files.</span></div></div>
+      <div className="fresh-start-counts"><span>Browser workspace<strong>{browserCounts.jobs} jobs / {browserCounts.drafts} drafts / {browserCounts.summaries} summaries</strong></span><span>Local database<strong>{previewState === "loading" ? "Checking..." : previewState === "ready" ? `${backendRecords} records` : "Unavailable"}</strong></span></div>
+      <label className={`fresh-start-option ${previewState !== "ready" ? "disabled" : ""}`}><input type="checkbox" checked={clearBackend} disabled={previewState !== "ready" || running} onChange={(event) => setClearBackend(event.target.checked)} /><span><strong>Clear local SQLite history too</strong><small>{preview?.backupPlanned ? "A consistent copy is stored in a backups folder beside the SQLite file before records are cleared." : previewState === "ready" ? "This backend uses temporary storage, so no SQLite file backup is needed." : "Start or update the local service to include its CRM, mailbox, run, and recovery history."}</small></span></label>
+      {previewState === "unavailable" && <button className="small-button compact" disabled={running} onClick={() => void loadPreview()}><RefreshCw size={14} /> Check again</button>}
+      <label className="fresh-start-confirm"><span>Type <code>{FRESH_START_CONFIRMATION}</code> to continue</span><input aria-label="Fresh start confirmation" value={confirmation} disabled={running} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" /></label>
+      {error && <div className="wizard-error"><AlertTriangle size={15} />{error}</div>}
+      <footer><button className="ghost-button" disabled={running} onClick={onClose}>Cancel</button><button className="danger-action" disabled={running || confirmation !== FRESH_START_CONFIRMATION || (clearBackend && !preview)} onClick={() => void confirmFreshStart()}><RotateCcw size={15} />{running ? "Starting fresh..." : "Start fresh"}</button></footer>
+    </section>
+  </div>;
 }
 
 function SourceWorkspace({
@@ -1482,6 +1795,7 @@ function SourceWorkspace({
   onClear,
   onExportWorkspace,
   onImportWorkspace,
+  onAddApplication,
 }: {
   source: SourceFileState;
   rows: number;
@@ -1500,6 +1814,7 @@ function SourceWorkspace({
   onClear: () => void;
   onExportWorkspace: () => void;
   onImportWorkspace: () => void;
+  onAddApplication: () => void;
 }) {
   const linkedCsv = source.mode === "linked" && source.format === "csv";
   return (
@@ -1511,6 +1826,7 @@ function SourceWorkspace({
         <div className="source-facts"><span>Mode<strong>{source.mode}</strong></span><span>Format<strong>{source.format}</strong></span><span>Rows<strong>{rows}</strong></span><span>Last sync<strong>{source.lastSyncedAt ? new Date(source.lastSyncedAt).toLocaleTimeString() : "never"}</strong></span></div>
         {importedSheets.length > 0 && <div className="imported-sheets"><strong>Application sheets</strong><span>{importedSheets.join(" / ")}</span></div>}
         <div className="source-actions">
+          <button className="small-button primary-outline" onClick={onAddApplication}><Plus size={15} /> Add application here</button>
           <button className="small-button" onClick={onLink} disabled={!linkedFilesSupported || importState === "loading"}><Link2 size={15} /> Link working file</button>
           <button className="small-button" onClick={onUpload} disabled={importState === "loading"}><Upload size={15} /> Import a copy</button>
           <button className="small-button" onClick={onPull} disabled={source.mode !== "linked"}><ArrowDownToLine size={15} /> Pull latest</button>
@@ -1534,10 +1850,7 @@ function SourceWorkspace({
   );
 }
 
-type CalendarEventKind = "application" | "outreach" | "interview" | "reply" | "rejection" | "bounce" | "confirmation";
-type CalendarEvent = { id: string; date: string; kind: CalendarEventKind; label: string; company: string };
-
-function CalendarWorkspace({ jobs }: { jobs: JobRow[] }) {
+function CalendarWorkspace({ jobs, preferences, onPreferences, tutorialActive }: { jobs: JobRow[]; preferences: CalendarPreferences; onPreferences: (value: CalendarPreferences) => void; tutorialActive: boolean }) {
   const events = useMemo(() => buildCalendarEvents(jobs), [jobs]);
   const latestDate = events.map((event) => event.date).sort().at(-1) ?? toDateKey(new Date().toISOString());
   const [month, setMonth] = useState(() => latestDate.slice(0, 7));
@@ -1551,17 +1864,33 @@ function CalendarWorkspace({ jobs }: { jobs: JobRow[] }) {
     return day >= 1 && day <= daysInMonth ? day : null;
   });
   const monthEvents = events.filter((event) => event.date.startsWith(month));
+  const exportEvents = selectCalendarEvents(events, preferences, month);
+  const destinationInstructions: Record<CalendarPreferences["destination"], string> = {
+    google: "Download the file, then open Google Calendar settings and use Import & export.",
+    outlook: "Download the file, then use Add calendar and Upload from file in Outlook.",
+    apple: "Download the file, then use File and Import in Apple Calendar.",
+    other: "Download the file and use your calendar's iCalendar or .ics import command.",
+  };
 
   function moveMonth(offset: number) {
     const next = new Date(year, monthIndex + offset, 1);
     setMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
   }
 
+  function updateKind(kind: CalendarEvent["kind"], enabled: boolean) {
+    onPreferences({ ...preferences, includedKinds: { ...preferences.includedKinds, [kind]: enabled } });
+  }
+
+  function exportCalendar() {
+    const suffix = preferences.exportScope === "visible_month" ? month : "all";
+    downloadText(`job-search-calendar-${suffix}.ics`, buildCalendarIcs(exportEvents, preferences), "text/calendar;charset=utf-8");
+  }
+
   return (
-    <div className="calendar-workspace">
+    <div className="calendar-workspace" data-tutorial-region="calendar" data-tutorial-active={tutorialActive ? "true" : undefined}>
       <header className="workspace-heading"><div><span className="eyebrow">Application timeline</span><h2>Calendar</h2><p>Applications, outreach, interviews, replies, and outcomes from the connected file.</p></div><div className="calendar-summary"><strong>{monthEvents.length}</strong><span>events this month</span></div></header>
       <div className="calendar-toolbar"><button className="icon-button" title="Previous month" onClick={() => moveMonth(-1)}><ChevronLeft size={17} /></button><h3>{monthDate.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h3><button className="icon-button" title="Next month" onClick={() => moveMonth(1)}><ChevronRight size={17} /></button><button className="small-button compact" onClick={() => setMonth(latestDate.slice(0, 7))}>Latest activity</button></div>
-      <div className="calendar-legend">{(["application", "outreach", "interview", "reply", "rejection", "bounce", "confirmation"] as CalendarEventKind[]).map((kind) => <span className={kind} key={kind}><i />{kind}</span>)}</div>
+      <div className="calendar-legend">{calendarEventKinds.map((kind) => <span className={kind} key={kind}><i />{kind}</span>)}</div>
       <div className="calendar-scroll">
         <div className="calendar-grid" role="grid">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <div className="calendar-weekday" key={day}>{day}</div>)}
@@ -1573,52 +1902,26 @@ function CalendarWorkspace({ jobs }: { jobs: JobRow[] }) {
         </div>
       </div>
       {!monthEvents.length && <div className="empty-report">No dated activity in this month.</div>}
+      <section className="calendar-handoff">
+        <div className="section-heading"><div><span className="eyebrow">External calendar</span><h3>Choose what leaves this app</h3></div><strong>{exportEvents.length} selected events</strong></div>
+        <p>The app creates one standard .ics file. It never writes to a calendar in the background, and alerts stay off unless you choose one.</p>
+        <div className="calendar-export-settings">
+          <label>Calendar<select value={preferences.destination} onChange={(event) => onPreferences({ ...preferences, destination: event.target.value as CalendarPreferences["destination"] })}><option value="google">Google Calendar</option><option value="outlook">Outlook Calendar</option><option value="apple">Apple Calendar</option><option value="other">Another calendar app</option></select></label>
+          <label>Export range<select value={preferences.exportScope} onChange={(event) => onPreferences({ ...preferences, exportScope: event.target.value as CalendarPreferences["exportScope"] })}><option value="visible_month">This visible month</option><option value="all_events">All dated activity</option></select></label>
+          <label>Event alert<select value={preferences.reminderMinutes} onChange={(event) => onPreferences({ ...preferences, reminderMinutes: Number(event.target.value) as CalendarPreferences["reminderMinutes"] })}><option value="0">No alert</option><option value="10">10 minutes before</option><option value="30">30 minutes before</option><option value="60">1 hour before</option><option value="1440">1 day before</option></select></label>
+        </div>
+        <div className="calendar-kind-grid">
+          {calendarEventKinds.map((kind) => <label key={kind} className={preferences.includedKinds[kind] ? "active" : ""}><input type="checkbox" checked={preferences.includedKinds[kind]} onChange={(event) => updateKind(kind, event.target.checked)} /><span><i className={kind} />{calendarKindLabel(kind)}</span></label>)}
+        </div>
+        <div className="calendar-export-action"><div><strong>{preferences.destination === "other" ? "Calendar file" : preferences.destination === "google" ? "Google Calendar" : preferences.destination === "outlook" ? "Outlook Calendar" : "Apple Calendar"}</strong><span>{destinationInstructions[preferences.destination]}</span><small>Stable event IDs help compatible calendars recognize a repeated import. Review the import screen before confirming it.</small></div><button className="launch-button" disabled={!exportEvents.length} onClick={exportCalendar}><Download size={16} /> Download .ics</button></div>
+      </section>
     </div>
   );
 }
 
-function buildCalendarEvents(jobs: JobRow[]): CalendarEvent[] {
-  const events: CalendarEvent[] = [];
-  for (const job of jobs) {
-    const applicationDate = toDateKey(job.appliedAt);
-    const label = job.roleTitle || job.jobId || "Application";
-    if (applicationDate) events.push({ id: `${job.id}-application`, date: applicationDate, kind: "application", label, company: job.company || "Unknown" });
-    const outreachDate = toDateKey(job.sentAt) || (job.status === "sent" ? applicationDate : "");
-    if (outreachDate) events.push({ id: `${job.id}-outreach`, date: outreachDate, kind: "outreach", label, company: job.company || "Unknown" });
-    const statusKinds: Partial<Record<JobRow["status"], CalendarEventKind>> = { interview: "interview", replied: "reply", rejected: "rejection", bounced: "bounce", application_received: "confirmation" };
-    const kind = statusKinds[job.status];
-    if (kind) {
-      const statusDate = findStatusDate(job.statusDetail ?? "", applicationDate) || toDateKey(job.lastWorkedAt) || applicationDate;
-      if (statusDate) events.push({ id: `${job.id}-${kind}`, date: statusDate, kind, label: job.statusDetail || label, company: job.company || "Unknown" });
-    }
-  }
-  return events;
-}
-
-function findStatusDate(detail: string, fallbackDate: string): string {
-  const full = detail.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/);
-  if (full) {
-    const year = full[3].length === 2 ? `20${full[3]}` : full[3];
-    return `${year}-${full[1].padStart(2, "0")}-${full[2].padStart(2, "0")}`;
-  }
-  const short = detail.match(/\b(\d{1,2})[/-](\d{1,2})\b/);
-  if (short && fallbackDate) return `${fallbackDate.slice(0, 4)}-${short[1].padStart(2, "0")}-${short[2].padStart(2, "0")}`;
-  const named = detail.match(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?/i);
-  if (named) {
-    const year = named[3] || fallbackDate.slice(0, 4);
-    const parsed = new Date(`${named[1]} ${named[2]}, ${year} 12:00:00`);
-    if (!Number.isNaN(parsed.getTime())) return toDateKey(parsed.toISOString());
-  }
-  return "";
-}
-
-function toDateKey(value: string): string {
-  const match = String(value ?? "").match(/^(\d{4}-\d{2}-\d{2})/);
-  if (match) return match[1];
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+function calendarKindLabel(kind: CalendarEvent["kind"]): string {
+  const labels: Record<CalendarEvent["kind"], string> = { application: "Applications", outreach: "Outreach sent", interview: "Interviews", reply: "Replies / next steps", rejection: "Rejections", bounce: "Email problems", confirmation: "Application confirmations" };
+  return labels[kind];
 }
 
 function ProfileManager({ profiles, activeKey, jobs, newLabel, newSender, onSelect, onNewLabel, onNewSender, onAdd, onDelete, onUpdate }: {
@@ -1645,6 +1948,22 @@ function ProfileManager({ profiles, activeKey, jobs, newLabel, newSender, onSele
       <section className="new-profile"><div><span className="eyebrow">Add another role profile</span><h3>New profile</h3></div><input value={newLabel} onChange={(event) => onNewLabel(event.target.value)} placeholder="Profile name" /><input value={newSender} onChange={(event) => onNewSender(event.target.value)} placeholder="Sender name" /><button className="small-button" onClick={onAdd}><UserPlus size={15} /> Add profile</button></section>
     </div>
   );
+}
+
+function inferJobId(jobUrl: string): string {
+  if (!jobUrl) return "";
+  try {
+    const url = new URL(jobUrl);
+    for (const key of ["job_id", "jobId", "gh_jid", "requisitionId", "reqId"]) {
+      const value = url.searchParams.get(key)?.trim();
+      if (value) return value;
+    }
+    const segments = url.pathname.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
+    const candidate = [...segments].reverse().find((segment) => /^(?:[a-z]+[-_])?\d{4,}$|^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(segment));
+    return candidate ?? "";
+  } catch {
+    return "";
+  }
 }
 
 function BackendRefresh({ error, onRefresh }: { error: string; onRefresh: () => void }) {
@@ -1773,6 +2092,7 @@ function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection
 function InlineAiConfiguration({ value, check, onChange, onCheck }: { value: AiConnectionSettings; check: AiConnectionCheck | null; onChange: (value: AiConnectionSettings) => void; onCheck: () => void }) {
   const recipe = aiConnectionRecipes[value.mode];
   const apiMode = value.mode.endsWith("_api") || value.mode === "openai_compatible";
+  const bundledCompatibleApi = ["gemini_api", "groq_api", "openrouter_api", "deepseek_api", "kimi_api", "mistral_api", "together_api", "cerebras_api"].includes(value.mode);
   const planMode = recipe.planBacked === true;
   const activeCheck = check?.mode === value.mode ? check : null;
   const [copiedCommand, setCopiedCommand] = useState("");
@@ -1791,11 +2111,11 @@ function InlineAiConfiguration({ value, check, onChange, onCheck }: { value: AiC
   }
   const statusState = activeCheck?.status === "ready" ? "ready" : activeCheck?.status === "checking" ? "idle" : activeCheck ? "error" : "setup";
   return <div className="inline-ai-config">
-    <label>AI connection<select aria-label="Initial AI connection" value={value.mode} onChange={(event) => changeMode(event.target.value as AiConnectionSettings["mode"])}><optgroup label="Use an existing plan"><option value="codex_cli">ChatGPT plan / Codex CLI</option><option value="claude_cli">Claude plan / Claude Code</option><option value="cursor_cli">Cursor plan / Cursor CLI</option><option value="opencode_cli">OpenCode Go plan</option></optgroup><optgroup label="Local model"><option value="ollama">Ollama local model</option></optgroup><optgroup label="Separate API billing"><option value="openai_api">OpenAI API</option><option value="anthropic_api">Anthropic API</option><option value="gemini_api">Google Gemini API</option><option value="groq_api">Groq API</option><option value="openrouter_api">OpenRouter API</option><option value="openai_compatible">Other OpenAI-compatible API</option></optgroup></select></label>
+    <label>AI connection<select aria-label="Initial AI connection" value={value.mode} onChange={(event) => changeMode(event.target.value as AiConnectionSettings["mode"])}><optgroup label="Use an existing plan"><option value="codex_cli">ChatGPT plan / Codex CLI</option><option value="claude_cli">Claude plan / Claude Code</option><option value="cursor_cli">Cursor plan / Cursor CLI</option><option value="opencode_cli">OpenCode Go plan</option></optgroup><optgroup label="Local model"><option value="ollama">Ollama local model</option></optgroup><optgroup label="Common lower-cost APIs"><option value="deepseek_api">DeepSeek API</option><option value="kimi_api">Kimi API</option><option value="mistral_api">Mistral API</option><option value="together_api">Together AI API</option><option value="cerebras_api">Cerebras Inference API</option><option value="groq_api">Groq API</option><option value="openrouter_api">OpenRouter API</option></optgroup><optgroup label="Other separate API billing"><option value="openai_api">OpenAI API</option><option value="anthropic_api">Anthropic API</option><option value="gemini_api">Google Gemini API</option><option value="openai_compatible">Other OpenAI-compatible API</option></optgroup></select></label>
     <label>{planMode ? "Model (optional)" : "Model"}<input list={value.mode === "opencode_cli" ? "opencode-go-models" : undefined} value={value.model} onChange={(event) => onChange({ ...value, model: event.target.value })} placeholder={recipe.modelPlaceholder ?? "Provider model ID"} /></label>
     {value.mode === "opencode_cli" && <datalist id="opencode-go-models">{(activeCheck?.availableModels ?? []).map((model) => <option key={model} value={model} />)}</datalist>}
-    {(value.mode === "ollama" || apiMode) && <label>Base URL<input value={value.baseUrl} onChange={(event) => onChange({ ...value, baseUrl: event.target.value })} placeholder={recipe.baseUrl} /></label>}
-    {apiMode && <label>API key environment variable<input value={value.apiKeyEnv} onChange={(event) => onChange({ ...value, apiKeyEnv: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })} /></label>}
+    {(value.mode === "ollama" || apiMode) && <label>Base URL<input value={value.baseUrl} readOnly={bundledCompatibleApi} onChange={(event) => onChange({ ...value, baseUrl: event.target.value })} placeholder={recipe.baseUrl} />{bundledCompatibleApi && <small>Fixed to the provider's official endpoint.</small>}</label>}
+    {apiMode && <label>API key environment variable<input value={value.apiKeyEnv} readOnly={bundledCompatibleApi} onChange={(event) => onChange({ ...value, apiKeyEnv: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })} />{bundledCompatibleApi && <small>Fixed in the backend so another browser value cannot be read or sent.</small>}</label>}
     {planMode && <div className="cli-login-definition"><Terminal size={15} /><div><strong>What "signed in through the CLI" means</strong><span>The provider's command-line app is installed for the same operating-system account that runs this backend. You complete its browser or device login once, and the CLI saves the account credential in its own local credential store. This console invokes that signed-in CLI; it does not ask for or store your model API key.</span></div></div>}
     {planMode && <div className="plan-login-assurance"><Check size={15} /><div><strong>Existing plan path; separate API credentials are blocked</strong><span>{recipe.billing}</span></div></div>}
     <div className="ai-connection-guide">
@@ -1832,7 +2152,7 @@ function ProviderSelect({ label, selection, options, onChange }: { label: string
   return <div className="provider-selector"><label><span>{label}</span><select aria-label={label} value={selection.providerId} onChange={(event) => onChange(selectIntegration(event.target.value, options))}>{options.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>{custom && <label><span>Display name</span><input aria-label={`${label} display name`} value={selection.label} onChange={(event) => onChange({ ...selection, label: event.target.value || option.label })} placeholder="Provider name" /></label>}<small>{option.adapter === "built_in" ? "Adapter included; credentials and helper configuration are still required." : option.adapter === "disabled" ? option.setup : "External adapter required before this can run."}</small></div>;
 }
 
-function SetupView({ status, health, backendUrl, profiles, aiConnection, aiConnectionCheck, integrations, storage, storageStatus, onStorageChange, onStorageTest, onStoragePull, onStoragePush, onAiChange, onAiCheck, onOpenOnboarding, onCheck, onExportIncident }: {
+function SetupView({ status, health, backendUrl, profiles, aiConnection, aiConnectionCheck, integrations, storage, storageStatus, onStorageChange, onStorageTest, onStoragePull, onStoragePush, onAiChange, onAiCheck, onOpenOnboarding, onStartFresh, onCheck, onExportIncident }: {
   status: SetupStatus | null;
   health: BackendHealth;
   backendUrl: string;
@@ -1849,6 +2169,7 @@ function SetupView({ status, health, backendUrl, profiles, aiConnection, aiConne
   onAiChange: (value: AiConnectionSettings) => void;
   onAiCheck: () => void;
   onOpenOnboarding: () => void;
+  onStartFresh: () => void;
   onCheck: () => void;
   onExportIncident: () => void;
 }) {
@@ -1900,6 +2221,12 @@ function SetupView({ status, health, backendUrl, profiles, aiConnection, aiConne
         </div>
         <details className="mcp-permissions"><summary>Optional MCP permissions</summary><div><code>OUTREACH_MCP_EXPOSE_CONTACTS=1</code><small>Registers tools that return recruiter names and email addresses.</small><code>OUTREACH_MCP_EXPOSE_MAILBOX=1</code><small>Registers tools that return mailbox sender details and previews.</small><code>OUTREACH_MCP_ENABLE_PROVIDER_ACTIONS=1</code><small>Allows confirmed {integrations.primaryEnrichment.label}, {integrations.fallbackEnrichment.enabled ? integrations.fallbackEnrichment.label : "manual fallback"}, and {mailboxLabel} operations.</small><code>OUTREACH_MCP_ENABLE_LIVE_SEND=1</code><small>Unlocks the MCP send gate. The backend live-send lock and exact confirmation are still required.</small></div></details>
         <div className="inline-note"><ShieldAlert size={14} /> A successful {mailboxLabel} provider request is not delivery confirmation. Sent mail, bounces, replies, and the activity log still need reconciliation.</div>
+      </section>
+
+      <section className="support-setup">
+        <div className="section-heading"><div><span className="eyebrow">Help and maintenance</span><h3><Bug size={16} /> Outreach Console {APP_VERSION}</h3></div></div>
+        <p>Use a GitHub ticket for trackable bugs and feature requests. Email is available for private details that should not be posted publicly.</p>
+        <div className="support-actions"><a className="small-button" href={BUG_ISSUE_URL} target="_blank" rel="noreferrer"><Github size={15} /> Share a bug</a><a className="small-button" href={SUPPORT_EMAIL_URL}><Mail size={15} /> Email support</a><button className="danger-outline" onClick={onStartFresh}><RotateCcw size={15} /> Start fresh</button></div>
       </section>
     </div>
   );
@@ -2078,16 +2405,18 @@ function JobEditor({
   job,
   profiles,
   onChange,
+  onDelete,
 }: {
   job: JobRow;
   profiles: ProfileDefinition[];
   onChange: (update: Partial<JobRow>) => void;
+  onDelete: () => void;
 }) {
   return (
     <div className="job-editor">
       <div className="job-editor-title">
-        <strong>Edit selected row</strong>
-        <span>{job.company || "Unknown company"}</span>
+        <div><strong>Edit selected row</strong><span>{job.company || "Unknown company"}</span></div>
+        <button className="small-button danger compact" onClick={onDelete}><Trash2 size={14} /> Remove row</button>
       </div>
       <div className="job-editor-grid">
         <label>
@@ -2449,7 +2778,7 @@ function safeBackendUrl(value: string, fallback = DEFAULT_BACKEND_URL): string {
   try {
     return validateHttpEndpoint(value, true);
   } catch {
-    return fallback;
+    return fallback || FALLBACK_BACKEND_URL;
   }
 }
 

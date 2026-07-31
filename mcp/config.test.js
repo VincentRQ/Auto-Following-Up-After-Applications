@@ -18,6 +18,20 @@ test("privacy redaction separates contact and mailbox opt-ins", () => {
   assert.deepEqual(redact(value, { exposeMailbox: true }), { sender_email: "sender@example.test", preview: "message", totals: { jobs: 2 } });
 });
 
+test("privacy redaction removes alternate address fields and raw JSON copies", () => {
+  const value = {
+    plan_json: '{"to":"hidden@example.test"}',
+    evidence_json: '{"redirect_email":"hidden@example.test"}',
+    plan: { drafts: [{ to: "hidden@example.test", subject: "Follow-up" }] },
+    proposedAction: { kind: "draft_redirect", target: "hidden@example.test" },
+    note: "Contact hidden@example.test",
+    totals: { jobs: 1 },
+  };
+  const safe = redact(value, {});
+  assert.equal(JSON.stringify(safe).includes("hidden@example.test"), false);
+  assert.deepEqual(safe, { plan: { drafts: [{ subject: "Follow-up" }] }, proposedAction: { kind: "draft_redirect" }, totals: { jobs: 1 } });
+});
+
 test("MCP backend URLs are restricted to loopback services", () => {
   assert.equal(normalizeLoopbackBackendUrl("http://127.0.0.1:43127/"), "http://127.0.0.1:43127");
   assert.equal(normalizeLoopbackBackendUrl("https://localhost:43127"), "https://localhost:43127");

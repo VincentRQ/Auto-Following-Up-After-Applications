@@ -4,6 +4,7 @@ import { dirname, extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { checkPlanAiConnection, generatePlanAiMessages, isPlanCliMode, normalizeAiConnection } from "./ai-cli.js";
+import { checkBuiltInCompatibleApi, generateBuiltInCompatibleApi, isBuiltInCompatibleApi } from "./openai-compatible.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -18,10 +19,11 @@ export function createProviders(config) {
     status() {
       const descriptions = providerApi.describe();
       return {
+        configuration: config.configError ? "error" : "ready",
         enrichment: descriptions.find((item) => item.role === "primary_enrichment")?.status ?? "missing",
         fallback: descriptions.find((item) => item.role === "fallback_enrichment")?.status ?? "disabled",
         mailbox: descriptions.find((item) => item.role === "mailbox")?.status ?? "missing",
-        writing: writingScript && existsSync(writingScript) ? "configured-helper" : "bundled-plan-cli",
+        writing: writingScript && existsSync(writingScript) ? "configured-helper" : "bundled-plan-and-compatible-api",
         writingCustom: writingScript && existsSync(writingScript) ? "configured" : "adapter-required",
       };
     },
@@ -40,6 +42,16 @@ export function createProviders(config) {
       return { integrations: providerApi.integrations(), providers: providerApi.describe() };
     },
     async check() {
+      if (config.publicSampleMode) {
+        return {
+          enrichment: null,
+          accounts: [],
+          errors: [],
+          status: providerApi.status(),
+          providers: providerApi.describe(),
+          publicSampleMode: true,
+        };
+      }
       const checks = await Promise.allSettled([
         existsSync(setupScript) ? runHelperJson(config.python, setupScript, [], config.legacyWorkspace) : Promise.resolve(null),
         integrations.mailbox.enabled && existsSync(mailboxScript) ? runHelperJson(config.python, mailboxScript, ["accounts"], config.legacyWorkspace || undefined) : Promise.resolve([]),
@@ -54,7 +66,11 @@ export function createProviders(config) {
     },
     async checkAi(input) {
       const connection = normalizeAiConnection(input);
+      if (config.publicSampleMode) return { mode: connection.mode, label: connection.mode, status: "error", installed: false, authenticated: false, detail: "AI connection checks are disabled in public sample mode.", nextCommand: "", version: "", availableModels: [] };
       if (isPlanCliMode(connection.mode)) return checkPlanAiConnection(connection);
+      if (isBuiltInCompatibleApi(connection.mode)) {
+        return checkBuiltInCompatibleApi(connection);
+      }
       if (writingScript && existsSync(writingScript)) {
         return { mode: connection.mode, label: "Private writing adapter", status: "ready", installed: true, authenticated: false, detail: "A private writing adapter is configured. Its provider authentication remains in that helper.", nextCommand: "", version: "", availableModels: [] };
       }
@@ -124,6 +140,7 @@ export function createProviders(config) {
       if (config.publicSampleMode) throw providerError("AI provider calls are disabled in public sample mode");
       const connection = normalizeAiConnection(input.ai_connection);
       if (isPlanCliMode(connection.mode)) return generatePlanAiMessages(connection, input);
+      if (isBuiltInCompatibleApi(connection.mode)) return generateBuiltInCompatibleApi(connection, input);
       if (!existsSync(writingScript)) throw providerError("Writing helper is not configured for this AI connection");
       const workDir = resolve("data/provider-work", randomUUID());
       mkdirSync(workDir, { recursive: true });
@@ -199,7 +216,7 @@ export function classifyMailboxMessage(message) {
 
 async function runJson(command, args, cwd) {
   try {
-    const { stdout } = await execFileAsync(command, args, { cwd, encoding: "utf8", maxBuffer: 20 * 1024 * 1024, windowsHide: true });
+    const { stdout } = await execFileAsync(command, args, { cwd, encoding: "utf8", maxBuffer: 20 * 1024 * 1024, timeout: 120_000, killSignal: "SIGKILL", windowsHide: true });
     return JSON.parse(stdout);
   } catch (error) {
     throw providerError(redactProviderError(error.stderr?.trim() || error.stdout?.trim() || error.message));

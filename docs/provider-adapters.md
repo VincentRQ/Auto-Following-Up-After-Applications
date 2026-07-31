@@ -23,7 +23,7 @@ starting the backend:
 | Contact discovery | `enrichmentHelper` | `OUTREACH_ENRICHMENT_HELPER` | Accepts `--input`, `--output`, `--max-contacts`, `--provider`, and optional `--allow-paid-lookups`; emits the normalized CSV in `ADAPTER_CONTRACT.md`. |
 | Discovery health check | `enrichmentSetupHelper` | `OUTREACH_ENRICHMENT_SETUP_HELPER` | Emits JSON and must not spend credits. |
 | Mailbox | `mailboxHelper` | `OUTREACH_MAILBOX_HELPER` | Supports `accounts`, `recent`, `draft`, and `send`, using JSON responses. |
-| Custom/API/local-model writing | `writingHelper` | `OUTREACH_WRITING_HELPER` | Accepts a bounded JSON request file and returns normalized message JSON. ChatGPT/Codex, Claude, Cursor, and OpenCode Go plan CLIs use the bundled bridge instead. |
+| Custom/local-model writing | `writingHelper` | `OUTREACH_WRITING_HELPER` | Accepts a bounded JSON request file and returns normalized message JSON. Bundled plan CLIs and named compatible APIs do not need this helper. |
 | Legacy workspace | `legacyWorkspace` | `OUTREACH_LEGACY_WORKSPACE` | Compatibility option for an existing private workflow containing the two enrichment helpers. |
 
 Python helpers use the configured `python` command, which defaults to `python`.
@@ -45,8 +45,10 @@ listed above.
 - **Hunter, Prospeo, Snov.io, and custom services:** run the action externally
   through an already-authorized connector/MCP, or implement the same local
   normalized helper contract.
-- **Writing models:** use the outside-LLM handoff, select a bundled plan CLI, or
-  implement `public/WRITING_ADAPTER_CONTRACT.md` for a custom/API/local-model path.
+- **Writing models:** use the outside-LLM handoff, a bundled plan CLI, a bundled
+  named API (Gemini, Groq, OpenRouter, DeepSeek, Kimi, Mistral, Together AI, or
+  Cerebras), or the contract in `public/WRITING_ADAPTER_CONTRACT.md` for another
+  API or local model.
 
 ## Verification Order
 

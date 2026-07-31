@@ -1,7 +1,12 @@
 {
   "name": "auto-following-up-after-applications",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
+  "author": "Vincent Quimby",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
   "type": "module",
   "bin": {
     "outreach-console-mcp": "dist/outreach-mcp.js"
@@ -15,19 +20,19 @@
     "icon:mcp": "node scripts/create-outreach-icon.mjs",
     "build:mcp": "node scripts/build-mcp-plugin.mjs",
     "smoke:mcp": "node scripts/smoke-mcp-stdio.mjs",
+    "stage:lite": "node scripts/build-lite-release.mjs",
+    "pack:lite": "npm run build && npm run build:mcp && npm run stage:lite && npm run audit:size",
+    "smoke:lite": "node scripts/smoke-lite-release.mjs",
     "stage:mcp": "node scripts/stage-mcp.mjs",
     "pack:mcp": "npm run icon:mcp && npm run build:mcp && npm run stage:mcp && npx --yes @anthropic-ai/mcpb@2.1.2 validate build/mcp/manifest.json && npx --yes @anthropic-ai/mcpb@2.1.2 pack build/mcp outreach-console-mcp.mcpb",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run src && node --test backend/*.test.js mcp/*.test.js",
-    "audit:release": "node scripts/release-audit.mjs"
+    "audit:release": "node scripts/release-audit.mjs",
+    "audit:size": "node scripts/size-audit.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "lucide-react": "^0.468.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "read-excel-file": "^9.3.1",
     "zod": "^3.25.0"
   },
   "devDependencies": {
@@ -35,6 +40,10 @@
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^5.1.1",
     "esbuild": "^0.28.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "read-excel-file": "^9.3.1",
     "typescript": "^5.7.2",
     "vite": "^7.2.7",
     "vitest": "^4.1.0"

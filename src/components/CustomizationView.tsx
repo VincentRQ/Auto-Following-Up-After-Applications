@@ -1,4 +1,4 @@
-import { Download, RotateCcw, SlidersHorizontal, Upload } from "lucide-react";
+import { Download, PanelLeftClose, Palette, RotateCcw, Upload } from "lucide-react";
 import type { WorkflowPreferences } from "../types";
 
 interface CustomizationViewProps {
@@ -7,9 +7,35 @@ interface CustomizationViewProps {
   onReset: () => void;
   onExport: () => void;
   onImport: () => void;
+  onResetPanels: () => void;
 }
 
-export function CustomizationView({ value, onChange, onReset, onExport, onImport }: CustomizationViewProps) {
+const themes: Array<{ value: WorkflowPreferences["colorTheme"]; label: string; colors: string[] }> = [
+  { value: "terminal", label: "Terminal", colors: ["#090b0a", "#48d597", "#7dd3fc"] },
+  { value: "light", label: "Daylight", colors: ["#f1f5f3", "#08794f", "#b72d3a"] },
+  { value: "graphite", label: "Graphite", colors: ["#161719", "#68d5c4", "#ff7a8a"] },
+  { value: "mulberry", label: "Mulberry", colors: ["#1b1018", "#8de1bd", "#83c8ff"] },
+  { value: "high_contrast", label: "High contrast", colors: ["#000000", "#60ffa9", "#ffd166"] },
+];
+
+const accents: Array<{ value: WorkflowPreferences["accentColor"]; label: string; color: string }> = [
+  { value: "green", label: "Green", color: "#48d597" },
+  { value: "cyan", label: "Cyan", color: "#7dd3fc" },
+  { value: "amber", label: "Amber", color: "#f0b95e" },
+  { value: "rose", label: "Rose", color: "#ff7a8a" },
+  { value: "violet", label: "Violet", color: "#b794f4" },
+];
+
+const backgroundEffects: Array<{ value: WorkflowPreferences["backgroundEffect"]; label: string }> = [
+  { value: "off", label: "Off" },
+  { value: "scanlines", label: "Slow scanlines" },
+  { value: "grid_drift", label: "Drifting grid" },
+  { value: "signal_sweep", label: "Signal sweep" },
+  { value: "data_points", label: "Data points" },
+  { value: "circuit_traces", label: "Circuit traces" },
+];
+
+export function CustomizationView({ value, onChange, onReset, onExport, onImport, onResetPanels }: CustomizationViewProps) {
   const updateModule = (name: keyof WorkflowPreferences["modules"], enabled: boolean) => {
     onChange({ ...value, modules: { ...value.modules, [name]: enabled } });
   };
@@ -25,12 +51,25 @@ export function CustomizationView({ value, onChange, onReset, onExport, onImport
       </header>
 
       <div className="preference-band">
-        <h3><SlidersHorizontal size={16} /> Appearance</h3>
+        <h3><Palette size={16} /> Full color theme</h3>
+        <div className="theme-picker">
+          {themes.map((theme) => <button key={theme.value} className={value.colorTheme === theme.value ? "active" : ""} onClick={() => onChange({ ...value, colorTheme: theme.value })}><span>{theme.colors.map((color) => <i key={color} style={{ background: color }} />)}</span><strong>{theme.label}</strong></button>)}
+        </div>
+        <p>Theme changes the page, panels, fields, borders, and text. Accent changes the primary action color inside that theme.</p>
         <div className="preference-grid">
-          <label>Theme<select value={value.colorTheme} onChange={(event) => onChange({ ...value, colorTheme: event.target.value as WorkflowPreferences["colorTheme"] })}><option value="terminal">Terminal dark</option><option value="light">Light</option><option value="high_contrast">High contrast</option></select></label>
           <label>Density<select value={value.density} onChange={(event) => onChange({ ...value, density: event.target.value as WorkflowPreferences["density"] })}><option value="compact">Compact</option><option value="comfortable">Comfortable</option></select></label>
-          <label>Accent<select value={value.accentColor} onChange={(event) => onChange({ ...value, accentColor: event.target.value as WorkflowPreferences["accentColor"] })}><option value="green">Green</option><option value="cyan">Cyan</option><option value="amber">Amber</option></select></label>
+          <label>Background effect<select value={value.backgroundEffect} onChange={(event) => onChange({ ...value, backgroundEffect: event.target.value as WorkflowPreferences["backgroundEffect"] })}>{backgroundEffects.map((effect) => <option key={effect.value} value={effect.value}>{effect.label}</option>)}</select></label>
           <label className="toggle-row compact-toggle"><input type="checkbox" checked={value.reduceMotion} onChange={(event) => onChange({ ...value, reduceMotion: event.target.checked })} /><span><strong>Reduce motion</strong><small>Disables nonessential interface movement.</small></span></label>
+        </div>
+        <div className="accent-picker" aria-label="Accent color">{accents.map((accent) => <button key={accent.value} className={value.accentColor === accent.value ? "active" : ""} onClick={() => onChange({ ...value, accentColor: accent.value })}><i style={{ background: accent.color }} /><span>{accent.label}</span></button>)}</div>
+      </div>
+
+      <div className="preference-band">
+        <div className="preference-heading"><h3><PanelLeftClose size={16} /> Panel sizes</h3><button className="small-button compact" onClick={onResetPanels}><RotateCcw size={14} /> Reset panel sizes</button></div>
+        <p>Drag the vertical dividers on the main screen, or set exact widths here. The center uses the remaining space.</p>
+        <div className="panel-size-controls">
+          <label>Left column <strong>{value.leftPanelWidth}px</strong><input type="range" min="220" max="440" step="10" value={value.leftPanelWidth} onChange={(event) => onChange({ ...value, leftPanelWidth: Number(event.target.value) })} /></label>
+          <label>Right column <strong>{value.rightPanelWidth}px</strong><input type="range" min="260" max="520" step="10" value={value.rightPanelWidth} onChange={(event) => onChange({ ...value, rightPanelWidth: Number(event.target.value) })} /></label>
         </div>
       </div>
 

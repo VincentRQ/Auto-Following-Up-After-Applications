@@ -31,6 +31,9 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run build:mcp
+      - run: npm run stage:lite
+      - run: npm run audit:size
+      - run: npm run smoke:lite
       - name: Verify MCP against the sample-safe backend
         run: |
           node backend/server.js &

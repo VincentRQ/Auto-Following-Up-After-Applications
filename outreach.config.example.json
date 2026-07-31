@@ -6,6 +6,7 @@
     "colorTheme": "terminal",
     "density": "compact",
     "accentColor": "green",
+    "backgroundEffect": "scanlines",
     "reduceMotion": false,
     "defaultSpacingSeconds": 30,
     "defaultContactTarget": 3,
@@ -38,8 +39,8 @@
     "version": 1,
     "mode": "external_llm",
     "subjectTemplate": "{{role_title}} | {{job_id}}",
-    "bodyTemplate": "Hi {{recipient_first_name}},\n\nI noticed {{company}} is hiring for {{role_title}}. I would be glad to connect if it would be useful.\n\nBest,\n{{sender_name}}",
-    "globalPrompt": "Use supplied facts, write warmly and specifically, avoid sales language, and do not invent experience.",
+    "bodyTemplate": "Hi {{recipient_first_name}},\n\nI saw {{company}} is hiring for {{role_title}}, with an emphasis on {{responsibility}}. My background includes {{profile_focus}}, which overlaps with that work. I applied and wanted to put my application on your radar. Would you be the right person to contact about the role?\n\nBest,\n{{sender_name}}",
+    "globalPrompt": "Use one factual detail from the listing and one supplied point of fit. Keep the full body under 80 words, use one routing question, avoid sales language, and do not invent facts.",
     "maximumWords": 80,
     "requireIndividualReview": true
   },

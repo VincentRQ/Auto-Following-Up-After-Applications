@@ -1,6 +1,22 @@
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+
+const WORKSPACE_TABLES = [
+  "outreach_attempts",
+  "run_items",
+  "exceptions",
+  "mailbox_events",
+  "outreach_history",
+  "events",
+  "message_drafts",
+  "provider_usage",
+  "system_logs",
+  "runs",
+  "contacts",
+  "jobs",
+  "companies",
+];
 
 export function openDatabase(path = "data/outreach.sqlite") {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -13,6 +29,39 @@ export function openDatabase(path = "data/outreach.sqlite") {
   ensureColumn(db, "contacts", "linkedin_url", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "contacts", "external_key", "TEXT NOT NULL DEFAULT ''");
   return db;
+}
+
+export function workspaceRecordCounts(db) {
+  return Object.fromEntries(WORKSPACE_TABLES.map((table) => [table, Number(db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count)]));
+}
+
+export function backupAndResetWorkspace(db, databasePath = ":memory:") {
+  const deleted = workspaceRecordCounts(db);
+  let backupFile = "";
+  if (databasePath !== ":memory:") {
+    const absoluteDatabase = resolve(databasePath);
+    const backupDirectory = join(dirname(absoluteDatabase), "backups");
+    mkdirSync(backupDirectory, { recursive: true });
+    const extension = extname(absoluteDatabase) || ".sqlite";
+    const stem = basename(absoluteDatabase, extension);
+    const timestamp = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 17);
+    let candidate = join(backupDirectory, `${stem}-before-reset-${timestamp}${extension}`);
+    let suffix = 1;
+    while (existsSync(candidate)) candidate = join(backupDirectory, `${stem}-before-reset-${timestamp}-${suffix++}${extension}`);
+    db.exec("PRAGMA wal_checkpoint(FULL)");
+    db.exec(`VACUUM INTO '${candidate.replaceAll("'", "''")}'`);
+    backupFile = basename(candidate);
+  }
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const table of WORKSPACE_TABLES) db.exec(`DELETE FROM ${table}`);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return { deleted, backupCreated: Boolean(backupFile), backupFile };
 }
 
 function ensureColumn(db, table, column, definition) {

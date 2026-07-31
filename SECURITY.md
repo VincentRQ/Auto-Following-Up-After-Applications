@@ -10,13 +10,18 @@ branch.
 - Provider credentials remain outside MCP tool arguments and results.
 - Sensitive tools are opt-in and external/state-changing actions are
   confirmation-gated.
-- Public sample mode blocks provider calls and sends.
+- Public sample mode blocks provider helpers, AI/plan connection checks,
+  generation, mailbox access, drafts, and sends.
 - List outputs are capped and sensitive keys are redacted unless enabled.
 - Imported content and mailbox text are treated as untrusted data.
 - Browser access to the backend is restricted to configured loopback origins, and
   JSON request bodies are bounded.
 - External database and writing adapters receive no credentials from GUI state;
   their credentials remain in their own process environments.
+- Named compatible AI providers use backend-pinned HTTPS endpoints and
+  environment-variable names. Browser values cannot redirect those credentials.
+- Mailbox-provider responses are reduced to the IDs and links the UI needs before
+  they cross the backend boundary.
 
 These controls do not sandbox a client that also has unrestricted shell access.
 Such a client may be able to call local provider helpers directly.
@@ -39,6 +44,14 @@ release is secure.
 
 ## Reporting
 
-Do not open a public issue containing credentials, resumes, recruiter contact
-exports, mailbox text, private database files, or local paths. Remove private
-data from a minimal reproduction before reporting a problem.
+Use the GUI's **Share a bug** action for a sanitized, trackable GitHub issue. Use
+**Email support** when a useful reproduction requires private context that should
+not be posted publicly. Do not include credentials, resumes, recruiter contact
+exports, mailbox text, private database files, or user-specific local paths in a
+public issue. Remove private data from a minimal reproduction before sharing it.
+
+The **Start fresh** action requires a short-lived one-time preview token and the
+exact `START FRESH` phrase. It clears only Outreach Console browser state and,
+when explicitly selected, records in the configured embedded SQLite database.
+Source files, resumes, credentials, provider configuration, CLI logins, and
+external databases are outside the deletion boundary.

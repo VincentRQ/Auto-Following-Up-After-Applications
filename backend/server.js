@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { readFile, realpath, stat } from "node:fs/promises";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDatabase } from "./database.js";
 import { createService } from "./service.js";
@@ -8,6 +10,7 @@ import { createProviders } from "./providers.js";
 export function createOutreachServer({
   providers = createProviders(loadConfig()),
   databasePath,
+  staticRoot = process.env.OUTREACH_STATIC_ROOT ?? "",
   allowedOrigins = parseAllowedOrigins(process.env.OUTREACH_ALLOWED_ORIGINS),
   maximumBodyBytes = Number(process.env.OUTREACH_MAX_BODY_BYTES ?? 2 * 1024 * 1024),
 } = {}) {
@@ -16,7 +19,11 @@ export function createOutreachServer({
     ? ":memory:"
     : databasePath ?? process.env.OUTREACH_DATABASE ?? "data/outreach.sqlite";
   const db = openDatabase(resolvedDatabasePath);
-  const service = createService(db, providers);
+  const service = createService(db, providers, { databasePath: resolvedDatabasePath });
+  const resolvedStaticRoot = staticRoot ? resolve(staticRoot) : "";
+  const staticConnectSources = providers?.publicSampleMode === true
+    ? "'self'"
+    : "'self' http://127.0.0.1:* http://localhost:*";
   const server = createServer(async (request, response) => {
     const origin = String(request.headers.origin ?? "");
     if (origin && !allowedOrigins.has(origin)) return send(response, 403, { error: "Browser origin is not allowed" });
@@ -31,6 +38,8 @@ export function createOutreachServer({
       if (request.method === "POST" && url.pathname === "/api/import/history") return send(response, 201, service.importHistorical(await body(request, maximumBodyBytes)));
       if (request.method === "GET" && url.pathname === "/api/dashboard") return send(response, 200, service.dashboard());
       if (request.method === "GET" && url.pathname === "/api/incidents/report") return send(response, 200, service.incidentReport());
+      if (request.method === "POST" && url.pathname === "/api/system/reset/preview") return send(response, 200, service.previewWorkspaceReset());
+      if (request.method === "POST" && url.pathname === "/api/system/reset") return send(response, 200, service.resetWorkspace(await body(request, maximumBodyBytes)));
       if (request.method === "GET" && url.pathname === "/api/setup/status") return send(response, 200, service.setupStatus());
       if (request.method === "POST" && url.pathname === "/api/setup/integrations") return send(response, 200, service.configureIntegrations(await body(request, maximumBodyBytes)));
       if (request.method === "GET" && url.pathname === "/api/writing/drafts") return send(response, 200, { drafts: service.listMessageDrafts(url.searchParams.get("profile") ?? "") });
@@ -62,6 +71,10 @@ export function createOutreachServer({
       if (request.method === "GET" && runMatch) return send(response, 200, service.getRun(runMatch[1]));
       const replayMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/replay$/);
       if (request.method === "POST" && replayMatch) return send(response, 201, service.replayRun(replayMatch[1]));
+      if (resolvedStaticRoot && (request.method === "GET" || request.method === "HEAD")) {
+        const served = await serveStatic(request, response, url.pathname, resolvedStaticRoot, staticConnectSources);
+        if (served) return;
+      }
       return send(response, 404, { error: "Not found" });
     } catch (error) {
       return send(response, error.status ?? 500, { error: error.message ?? "Internal error" });
@@ -103,7 +116,84 @@ function setCorsHeaders(response, origin) {
 
 function parseAllowedOrigins(value = "") {
   const configured = String(value).split(",").map((item) => item.trim()).filter(Boolean);
-  return new Set(configured.length ? configured : ["http://127.0.0.1:5177", "http://localhost:5177"]);
+  return new Set(configured.length ? configured : [
+    "http://127.0.0.1:5177",
+    "http://localhost:5177",
+    "http://127.0.0.1:43127",
+    "http://localhost:43127",
+  ]);
+}
+
+async function serveStatic(request, response, rawPathname, root, connectSources) {
+  let pathname;
+  try {
+    pathname = decodeURIComponent(rawPathname);
+  } catch {
+    throw httpError(400, "Request path is not valid UTF-8");
+  }
+  if (pathname.includes("\0")) throw httpError(400, "Request path is invalid");
+  const relativeName = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  let filePath = resolve(root, relativeName);
+  if (!isWithin(root, filePath)) throw httpError(403, "Static path is outside the application bundle");
+
+  let details = await fileStat(filePath);
+  if (details?.isDirectory()) {
+    filePath = resolve(filePath, "index.html");
+    if (!isWithin(root, filePath)) throw httpError(403, "Static path is outside the application bundle");
+    details = await fileStat(filePath);
+  }
+  if (!details?.isFile()) return false;
+
+  const canonicalRoot = await realpath(root);
+  const canonicalFile = await realpath(filePath);
+  if (!isWithin(canonicalRoot, canonicalFile)) throw httpError(403, "Static path is outside the application bundle");
+  const contents = await readFile(canonicalFile);
+  const extension = extname(filePath).toLowerCase();
+  const immutable = relativeName.startsWith("assets/") && /-[a-zA-Z0-9_-]{6,}\./.test(relativeName);
+  response.writeHead(200, {
+    "Content-Type": contentType(extension),
+    "Content-Length": String(contents.length),
+    "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
+    "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ${connectSources}; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`,
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+  });
+  response.end(request.method === "HEAD" ? "" : contents);
+  return true;
+}
+
+async function fileStat(path) {
+  try {
+    return await stat(path);
+  } catch (error) {
+    if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return null;
+    throw error;
+  }
+}
+
+function isWithin(root, candidate) {
+  const pathFromRoot = relative(root, candidate);
+  return pathFromRoot === "" || (!pathFromRoot.startsWith("..") && !isAbsolute(pathFromRoot));
+}
+
+function contentType(extension) {
+  return ({
+    ".css": "text/css; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".ico": "image/x-icon",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+  })[extension] ?? "application/octet-stream";
 }
 
 function httpError(status, message) {
@@ -114,5 +204,6 @@ function httpError(status, message) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.OUTREACH_PORT ?? 43127);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("OUTREACH_PORT must be an integer from 1024 through 65535.");
   createOutreachServer().listen(port, "127.0.0.1", () => console.log(`Outreach backend: http://127.0.0.1:${port}`));
 }

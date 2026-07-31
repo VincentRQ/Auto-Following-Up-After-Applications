@@ -12,9 +12,10 @@ names and credentials do not appear in business logic.
    `public/ADAPTER_CONTRACT.md` and set `OUTREACH_ENRICHMENT_HELPER`.
 3. **Email provider:** implement the mailbox section and set
    `OUTREACH_MAILBOX_HELPER`.
-4. **Writing model:** use the bundled plan CLI bridge, or implement
-   `public/WRITING_ADAPTER_CONTRACT.md` and set `OUTREACH_WRITING_HELPER` for a
-   custom, local-model, or separately billed API connection.
+4. **Writing model:** use a bundled plan CLI, a named compatible API bridge, or
+   implement `public/WRITING_ADAPTER_CONTRACT.md` and set
+   `OUTREACH_WRITING_HELPER` for a custom or local-model connection. Named API
+   bridges keep fixed official endpoints; arbitrary endpoints stay in adapters.
 5. **External database:** implement `public/DATABASE_ADAPTER_CONTRACT.md` and use
    one of the downloadable table schemas.
 6. **Outside AI:** connect the MCP server and give the agent

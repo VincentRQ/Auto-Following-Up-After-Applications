@@ -1,4 +1,4 @@
-import type { AiConnectionCheck, AiConnectionSettings, BackendHealth, BatchReport, BatchSettings, CrmCompany, CrmCompanyDetail, CrmContact, DashboardData, IntegrationSettings, JobRow, MailboxEvent, MessageDraft, OutreachHistoryItem, PreflightResult, QueueItem, RecoveryException, SetupStatus, WorkspaceSnapshot } from "../types";
+import type { AiConnectionCheck, AiConnectionSettings, BackendHealth, BatchReport, BatchSettings, CrmCompany, CrmCompanyDetail, CrmContact, DashboardData, IntegrationSettings, JobRow, MailboxEvent, MessageDraft, OutreachHistoryItem, PreflightResult, QueueItem, RecoveryException, SetupStatus, WorkspaceResetPreview, WorkspaceResetResult, WorkspaceSnapshot } from "../types";
 import { csvCell } from "./csv";
 import { classifyContactQuality } from "./runner";
 
@@ -137,6 +137,8 @@ export function fetchDashboard(backendUrl: string): Promise<DashboardData> { ret
 export function fetchSetupStatus(backendUrl: string): Promise<SetupStatus> { return fetchBackend(backendUrl, "/api/setup/status"); }
 export function saveIntegrationPreferences(backendUrl: string, settings: IntegrationSettings): Promise<{ integrations: IntegrationSettings; providers?: SetupStatus["providers"] }> { return mutateBackend(backendUrl, "/api/setup/integrations", settings); }
 export async function downloadIncidentReport(backendUrl: string): Promise<void> { const report = await fetchBackend<unknown>(backendUrl, "/api/incidents/report"); downloadJson(`outreach-incident-${new Date().toISOString().slice(0, 10)}.json`, report); }
+export function previewWorkspaceReset(backendUrl: string): Promise<WorkspaceResetPreview> { return mutateBackend(backendUrl, "/api/system/reset/preview", {}); }
+export function resetBackendWorkspace(backendUrl: string, token: string, confirmation: string): Promise<WorkspaceResetResult> { return mutateBackend(backendUrl, "/api/system/reset", { token, confirmation }); }
 export function checkAiConnection(backendUrl: string, input: AiConnectionSettings): Promise<AiConnectionCheck> { return mutateBackend(backendUrl, "/api/writing/check", input); }
 export function generateMessages(backendUrl: string, input: { brief: string; drafts: MessageDraft[]; maximum_words: number; ai_connection: AiConnectionSettings }): Promise<Array<{ draft_id: string; subject: string; body: string }>> {
   return mutateBackend<{ messages: Array<{ draft_id: string; subject: string; body: string }> }>(backendUrl, "/api/writing/generate", input).then((value) => value.messages);

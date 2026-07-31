@@ -19,6 +19,9 @@ console and already has access to contact, mailbox, and file connectors.
   after the user approves the exact preview.
 - Use the Writing view's global prompt and per-recipient instructions. Return
   `draft_id`, `subject`, and `body` JSON when using the outside-LLM handoff.
+- Keep the complete body within the configured word limit. Use one factual job-post
+  detail, one supplied point of fit, confirmation that the application was sent,
+  and one routing question. Never invent praise, problems, experience, or results.
 
 ## In-app AI
 
@@ -27,6 +30,9 @@ Use this mode when the console invokes a configured CLI or API adapter.
 - Local backend adapters own provider and mailbox calls.
 - ChatGPT/Codex, Claude, Cursor, and OpenCode Go plan modes use the bundled CLI
   bridge and the account already signed into that CLI.
+- Gemini, Groq, OpenRouter, DeepSeek, Kimi, Mistral, Together AI, and Cerebras can
+  use the bundled compatible API bridge. Their keys remain backend environment
+  variables, and their endpoints are fixed to the official HTTPS hosts.
 - An outside AI may inspect status, but must not repeat enrichment or sending.
 - API keys belong in environment variables or provider credential stores, never in
   imported files, prompts, logs, or source control.

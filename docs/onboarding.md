@@ -2,7 +2,13 @@
 
 ## Public Sample Mode
 
-Use this first. It prevents contact-provider calls, mailbox reads, drafts, and sends.
+Use this first. It prevents contact-provider calls, mailbox reads, AI connection
+checks, drafts, and sends.
+
+The Lite archive includes `Start Outreach Console - Sample Mode.cmd` for Windows
+and `start-outreach-console-sample.sh` for macOS/Linux. These launchers set the
+backend lock before the database opens. Loading synthetic rows in an ordinary
+private session does not change the backend mode.
 
 ```powershell
 $env:OUTREACH_PUBLIC_SAMPLE_MODE="1"
@@ -144,9 +150,14 @@ in a private user-level environment variable. Never add real keys to `.env`,
 | --- | --- | --- | --- |
 | OpenAI API | `OPENAI_API_KEY` | `https://api.openai.com/v1` | OpenAI Responses API |
 | Anthropic API | `ANTHROPIC_API_KEY` | `https://api.anthropic.com` | Anthropic Messages API |
-| Google Gemini API | `GEMINI_API_KEY` | `https://generativelanguage.googleapis.com/v1beta/openai/` | OpenAI-compatible |
+| Google Gemini API | `GEMINI_API_KEY` | `https://generativelanguage.googleapis.com/v1beta/openai` | Bundled compatible adapter |
 | Groq API | `GROQ_API_KEY` | `https://api.groq.com/openai/v1` | OpenAI-compatible |
 | OpenRouter API | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` | OpenAI-compatible |
+| DeepSeek API | `DEEPSEEK_API_KEY` | `https://api.deepseek.com` | Bundled compatible adapter |
+| Kimi API | `MOONSHOT_API_KEY` | `https://api.moonshot.ai/v1` | Bundled compatible adapter |
+| Mistral API | `MISTRAL_API_KEY` | `https://api.mistral.ai/v1` | Bundled compatible adapter |
+| Together AI API | `TOGETHER_API_KEY` | `https://api.together.ai/v1` | Bundled compatible adapter |
+| Cerebras Inference API | `CEREBRAS_API_KEY` | `https://api.cerebras.ai/v1` | Bundled compatible adapter |
 | Other compatible API | operator-defined | provider-defined `/v1` URL | OpenAI-compatible with provider-specific checks |
 
 Example for one PowerShell session:
@@ -161,16 +172,21 @@ For a persistent per-user variable, run
 then close and reopen the terminal before starting the app. Substitute the
 provider's environment-variable name as needed.
 
-In Setup, select the provider, enter its exact model ID, verify the base URL and
-environment-variable name, and click **Test connections**. The connection is
-ready only when that test reports the AI adapter as connected. A key being
-present is not sufficient: the backend must also make a minimal authenticated
-request and validate the returned schema.
+In Setup, select the provider, enter its exact model ID, verify the displayed
+base URL and environment-variable name, and click **Test connections**. The
+built-in compatible adapters pin both values in the backend; browser settings
+cannot redirect a key to another host or read a different environment variable.
+The browser does not persist credential-variable fields. Built-in providers
+restore their fixed variable name from the selected provider; custom adapters
+should keep credential references in their private local configuration.
+The connection is ready only when the test reports the AI adapter as connected.
+The test calls the provider's model-list endpoint and does not request generated
+text.
 
-OpenAI-compatible does not mean identical. The shared adapter must omit fields a
-provider does not support and account for model-name, endpoint, token-limit, and
-response-shape differences. Anthropic uses a distinct request format and should
-not be routed through that shared adapter.
+OpenAI-compatible does not mean identical. The bundled paths cover only the
+named providers in the table. An unlisted provider needs a reviewed writing
+helper that handles its model names, request fields, limits, and response shape.
+Anthropic uses a distinct request format and is not routed through this adapter.
 
 Private configuration, SQLite, provider work files, and local logs are ignored by
 git. Do not put API keys in `local-config.json`; provider credentials stay in their

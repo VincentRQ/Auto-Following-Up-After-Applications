@@ -51,3 +51,10 @@ arguments and should not be pasted into prompts.
 The project does not impose a retention schedule. The local operator controls
 browser storage, SQLite, external storage, and private configuration. Deleting the
 application does not automatically revoke provider authorization or API keys.
+
+**Start fresh** downloads a browser-workspace JSON backup before clearing this
+application's IndexedDB and `outreach-console.*` local-storage keys. It leaves
+unrelated browser keys intact. If the operator also selects the SQLite reset, the
+backend creates a consistent local database backup before removing application
+history. Connected spreadsheets, resumes, credentials, provider configuration,
+CLI logins, and external databases are not deleted or modified.

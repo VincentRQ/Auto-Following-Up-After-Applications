@@ -1,0 +1,4 @@
+interface:
+  display_name: "Outreach Console Operator"
+  short_description: "Operate a reviewed job outreach workflow"
+  default_prompt: "Use $outreach-console-operator to prepare a safe shadow outreach batch."

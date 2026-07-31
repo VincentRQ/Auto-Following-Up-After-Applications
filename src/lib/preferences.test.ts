@@ -8,10 +8,19 @@ describe("preference normalization", () => {
   });
 
   it("bounds operational timing and contact settings", () => {
-    const value = normalizeWorkflowPreferences({ defaultSpacingSeconds: 1, defaultContactTarget: 99, mailboxMonitorMinutes: -1 });
+    const value = normalizeWorkflowPreferences({ defaultSpacingSeconds: 1, defaultContactTarget: 99, mailboxMonitorMinutes: -1, leftPanelWidth: 20, rightPanelWidth: 900 });
     expect(value.defaultSpacingSeconds).toBe(15);
     expect(value.defaultContactTarget).toBe(12);
     expect(value.mailboxMonitorMinutes).toBe(0);
+    expect(value.leftPanelWidth).toBe(220);
+    expect(value.rightPanelWidth).toBe(520);
+  });
+
+  it("keeps full themes and expanded accents", () => {
+    expect(normalizeWorkflowPreferences({ colorTheme: "graphite", accentColor: "rose" }).colorTheme).toBe("graphite");
+    expect(normalizeWorkflowPreferences({ colorTheme: "mulberry", accentColor: "violet" }).accentColor).toBe("violet");
+    expect(normalizeWorkflowPreferences({ backgroundEffect: "circuit_traces" }).backgroundEffect).toBe("circuit_traces");
+    expect(normalizeWorkflowPreferences({ backgroundEffect: "invalid" as never }).backgroundEffect).toBe("scanlines");
   });
 
   it("rejects unsafe external adapter protocols", () => {

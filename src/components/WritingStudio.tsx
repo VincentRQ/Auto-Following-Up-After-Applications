@@ -42,7 +42,7 @@ export function WritingStudio({
   function prepare() {
     const selectedProfile = profiles.find((profile) => profile.key === selectedJobs[0]?.profile);
     const retained = drafts.filter((draft) => !selectedIds.has(draft.jobRowId));
-    const prepared = prepareMessageDrafts(selectedJobs, visibleDrafts, contactTarget, preferences, selectedProfile?.senderName ?? "");
+    const prepared = prepareMessageDrafts(selectedJobs, visibleDrafts, contactTarget, preferences, selectedProfile?.senderName ?? "", selectedProfile?.notes ?? "relevant work in the field");
     onDrafts([...retained, ...prepared]);
     setActiveId(prepared[0]?.id ?? "");
     setMessage(`${prepared.length} individual message slots prepared.`);
@@ -89,8 +89,8 @@ export function WritingStudio({
 
   function updateActive(update: Partial<MessageDraft>) {
     if (!active) return;
-    const sender = profiles.find((profile) => profile.key === active.profile)?.senderName ?? "";
-    onDrafts(drafts.map((draft) => draft.id === active.id ? updateMessageDraft(draft, update, preferences, activeJob, sender) : draft));
+    const selectedProfile = profiles.find((profile) => profile.key === active.profile);
+    onDrafts(drafts.map((draft) => draft.id === active.id ? updateMessageDraft(draft, update, preferences, activeJob, selectedProfile?.senderName ?? "", selectedProfile?.notes ?? "relevant work in the field") : draft));
   }
 
   function approveActive() {
