@@ -108,18 +108,45 @@ export function loadAiConnection(fallback: AiConnectionSettings): AiConnectionSe
   return normalizeAiConnectionSettings(stored, fallback);
 }
 
+export function saveAiConnection(value: AiConnectionSettings): void {
+  saveJson(storageKeys.aiConnection, {
+    controlMode: value.controlMode,
+    mode: value.mode,
+    model: value.model,
+    baseUrl: value.baseUrl,
+    strictPlanOnly: value.strictPlanOnly,
+  });
+}
+
 export function normalizeAiConnectionSettings(value: Partial<AiConnectionSettings> | undefined, fallback: AiConnectionSettings): AiConnectionSettings {
   const stored = isObject(value) ? value : {};
   const modes = new Set<AiConnectionSettings["mode"]>(["codex_cli", "claude_cli", "cursor_cli", "opencode_cli", "ollama", "openai_api", "anthropic_api", "gemini_api", "groq_api", "openrouter_api", "deepseek_api", "kimi_api", "mistral_api", "together_api", "cerebras_api", "openai_compatible", "manual"]);
   const controls = new Set<AiConnectionSettings["controlMode"]>(["external_operator", "in_app", "templates_only"]);
+  const mode = modes.has(stored.mode as AiConnectionSettings["mode"]) ? stored.mode! : fallback.mode;
   return {
     controlMode: controls.has(stored.controlMode as AiConnectionSettings["controlMode"]) ? stored.controlMode! : fallback.controlMode,
-    mode: modes.has(stored.mode as AiConnectionSettings["mode"]) ? stored.mode! : fallback.mode,
+    mode,
     model: String(stored.model ?? fallback.model).slice(0, 200),
     baseUrl: String(stored.baseUrl ?? fallback.baseUrl).slice(0, 2_000),
-    apiKeyEnv: String(stored.apiKeyEnv ?? fallback.apiKeyEnv).toUpperCase().replace(/[^A-Z0-9_]/g, "").slice(0, 100),
+    apiKeyEnv: fixedCredentialVariable(mode) || String(fallback.apiKeyEnv).toUpperCase().replace(/[^A-Z0-9_]/g, "").slice(0, 100),
     strictPlanOnly: stored.strictPlanOnly === true,
   };
+}
+
+function fixedCredentialVariable(mode: unknown): string {
+  const names: Partial<Record<AiConnectionSettings["mode"], string>> = {
+    openai_api: "OPENAI_API_KEY",
+    anthropic_api: "ANTHROPIC_API_KEY",
+    gemini_api: "GEMINI_API_KEY",
+    groq_api: "GROQ_API_KEY",
+    openrouter_api: "OPENROUTER_API_KEY",
+    deepseek_api: "DEEPSEEK_API_KEY",
+    kimi_api: "MOONSHOT_API_KEY",
+    mistral_api: "MISTRAL_API_KEY",
+    together_api: "TOGETHER_API_KEY",
+    cerebras_api: "CEREBRAS_API_KEY",
+  };
+  return names[mode as AiConnectionSettings["mode"]] ?? "";
 }
 
 export function loadSourceState(fallback: SourceFileState): SourceFileState {

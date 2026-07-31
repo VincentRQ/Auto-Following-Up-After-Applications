@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clearLocalApplicationState, loadAiConnection, loadProfiles, normalizeAiConnectionSettings, normalizeProfileDefinitions, storageKeys } from "./storage";
+import { clearLocalApplicationState, loadAiConnection, loadProfiles, normalizeAiConnectionSettings, normalizeProfileDefinitions, saveAiConnection, storageKeys } from "./storage";
 
 class MemoryStorage implements Storage {
   #values = new Map<string, string>();
@@ -62,7 +62,18 @@ describe("local application reset", () => {
     const value = loadAiConnection({ controlMode: "external_operator", mode: "manual", model: "", baseUrl: "", apiKeyEnv: "", strictPlanOnly: false });
     expect(value.mode).toBe("manual");
     expect(value.controlMode).toBe("in_app");
-    expect(value.apiKeyEnv).toBe("KEYDROP");
+    expect(value.apiKeyEnv).toBe("");
+  });
+
+  it("does not persist an API credential variable from browser state", () => {
+    saveAiConnection({ controlMode: "in_app", mode: "openai_compatible", model: "example-model", baseUrl: "https://provider.example/v1", apiKeyEnv: "PRIVATE_PROVIDER_KEY", strictPlanOnly: false });
+    expect(localStorage.getItem(storageKeys.aiConnection)).not.toContain("PRIVATE_PROVIDER_KEY");
+  });
+
+  it("restores fixed credential variable names from the selected provider", () => {
+    localStorage.setItem(storageKeys.aiConnection, JSON.stringify({ mode: "groq_api", controlMode: "in_app" }));
+    const value = loadAiConnection({ controlMode: "external_operator", mode: "manual", model: "", baseUrl: "", apiKeyEnv: "", strictPlanOnly: false });
+    expect(value.apiKeyEnv).toBe("GROQ_API_KEY");
   });
 
   it("normalizes untrusted workspace profiles and configuration values", () => {

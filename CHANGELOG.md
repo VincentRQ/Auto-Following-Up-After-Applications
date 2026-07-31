@@ -19,6 +19,10 @@
   to the Lite package without adding runtime dependencies.
 - Added separate one-click Sample Mode launchers so the backend provider lock is
   active before the database opens.
+- Made packaged builds use their own loopback origin on custom ports and limited
+  Sample Mode browser connections to that same locked service.
+- Corrected pre-check sample messaging, restored visible step numbers on narrow
+  setup screens, and canceled an older armed timer before an immediate run.
 - Closed public-sample connection-check paths, pinned each named API to its own
   credential variable, removed raw provider responses, and tightened mail input
   validation.

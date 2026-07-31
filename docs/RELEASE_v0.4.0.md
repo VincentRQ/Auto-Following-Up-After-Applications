@@ -15,6 +15,11 @@ order. Existing profile order is not changed. The Customize view adds five subtl
 CSS background effects and an Off setting; reduced-motion preferences stop their
 animation.
 
+Packaged builds now use the loopback origin that launched them, including custom
+ports. Locked Sample Mode limits browser connections to that same service, reports
+its mode accurately before sample rows are loaded, and never reads the private
+provider configuration. Mobile setup keeps numbered progress markers visible.
+
 ## More Writing Choices
 
 The console already supported ChatGPT/Codex, Claude, Cursor, and OpenCode Go plan
@@ -54,6 +59,6 @@ The release suite covers preferences, first-run shuffling, message length, provi
 endpoint pinning, missing credentials, structured API output, error redaction,
 sample-mode isolation, static-file traversal and symlink escape, backend recovery,
 MCP confirmation and privacy redaction, malformed stored settings, mail-header
-injection, packaged launch, archive contents, size, and privacy scanning. Tests use
-synthetic inputs and fake providers. They do not spend credits, read a mailbox,
-send email, or call a model.
+injection, due-versus-future scheduling, packaged launch, archive contents, size,
+and privacy scanning. Tests use synthetic inputs and fake providers. They do not
+spend credits, read a mailbox, send email, or call a model.

@@ -163,7 +163,15 @@ const forbiddenFiles = contentFiles.filter((path) => {
 if (forbiddenFiles.length) {
   throw new Error(`Lite release contains forbidden files: ${forbiddenFiles.map((path) => relative(stageRoot, path)).join(", ")}`);
 }
-const contentBytes = contentFiles.reduce((total, path) => total + statSync(path).size, 0);
+const manifestFiles = contentFiles.map((path) => {
+  const content = readFileSync(path);
+  return {
+    path: relative(stageRoot, path).replaceAll("\\", "/"),
+    bytes: content.byteLength,
+    sha256: createHash("sha256").update(content).digest("hex"),
+  };
+});
+const contentBytes = manifestFiles.reduce((total, file) => total + file.bytes, 0);
 const manifest = {
   name: "Outreach Console Lite",
   version,
@@ -172,11 +180,7 @@ const manifest = {
   dependencyInstallRequired: false,
   nodeVersion: ">=24",
   contentBytes,
-  files: contentFiles.map((path) => ({
-    path: relative(stageRoot, path).replaceAll("\\", "/"),
-    bytes: statSync(path).size,
-    sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
-  })),
+  files: manifestFiles,
 };
 writeFileSync(join(stageRoot, "release-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 

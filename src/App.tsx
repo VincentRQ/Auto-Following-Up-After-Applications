@@ -128,6 +128,7 @@ import {
   loadWritingPreferences,
   loadWorkspaceTutorialState,
   clearLocalApplicationState,
+  saveAiConnection,
   saveJson,
   saveStoredJobs,
   saveString,
@@ -142,6 +143,7 @@ import { ApplicationEntryModal, type NewApplicationInput } from "./components/Ap
 import { WorkspaceTutorial, type TutorialTarget } from "./components/WorkspaceTutorial";
 import { buildCalendarEvents, buildCalendarIcs, calendarEventKinds, defaultCalendarPreferences, normalizeCalendarPreferences, selectCalendarEvents, toDateKey, type CalendarEvent } from "./lib/calendar";
 import { FALLBACK_BACKEND_URL, resolveDefaultBackendUrl } from "./lib/backend-url";
+import { decideSchedule } from "./lib/schedule";
 
 type ImportState = "idle" | "loading" | "ready" | "error";
 type WorkspaceTab = "jobs" | "writing" | "source" | "calendar" | "profiles" | "customize";
@@ -379,7 +381,7 @@ export function App() {
   }, [backendUrl]);
 
   useEffect(() => {
-    saveJson(storageKeys.aiConnection, aiConnection);
+    saveAiConnection(aiConnection);
   }, [aiConnection]);
 
   useEffect(() => {
@@ -807,7 +809,12 @@ export function App() {
       setRightTab("debug");
       return;
     }
-    if (new Date(settings.scheduledAt).getTime() <= Date.now()) {
+    const scheduleDecision = decideSchedule(settings.scheduledAt);
+    if (scheduleDecision === "invalid") {
+      pushConsole("Launch blocked: choose a valid start date and time.");
+      return;
+    }
+    if (scheduleDecision === "run_now") {
       setArmedSettings(null);
       void runBatch(settings);
       return;

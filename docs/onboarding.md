@@ -176,6 +176,9 @@ In Setup, select the provider, enter its exact model ID, verify the displayed
 base URL and environment-variable name, and click **Test connections**. The
 built-in compatible adapters pin both values in the backend; browser settings
 cannot redirect a key to another host or read a different environment variable.
+The browser does not persist credential-variable fields. Built-in providers
+restore their fixed variable name from the selected provider; custom adapters
+should keep credential references in their private local configuration.
 The connection is ready only when the test reports the AI adapter as connected.
 The test calls the provider's model-list endpoint and does not request generated
 text.

@@ -32,6 +32,11 @@ CLI. Estimated scan spend was USD 0.
    allowing its GUI to address another local instance. Production builds now use
    their own loopback origin, and Sample Mode's content policy permits only that
    locked same-origin backend.
+8. Browser state could persist an API credential-variable field. Durable browser
+   settings now omit that field, while built-in providers reconstruct their fixed
+   variable names from the selected provider.
+9. The Lite manifest measured a file and then read it again for hashing. Manifest
+   size and digest now come from the same in-memory bytes.
 
 Static-file traversal was already blocked by canonical path checks. Coverage now
 includes encoded traversal and symbolic-link escape regression tests.
