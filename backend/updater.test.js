@@ -14,7 +14,7 @@ test("update manager accepts only the pinned GitHub release bundle and stages it
   const calls = [];
   const fetchImpl = async (url) => {
     calls.push(url);
-    if (url.includes("api.github.com")) return new Response(JSON.stringify({
+    if (new URL(String(url)).hostname === "api.github.com") return new Response(JSON.stringify({
       tag_name: "v9.9.9", name: "Release 9.9.9", html_url: "https://github.com/VincentRQ/Auto-Following-Up-After-Applications/releases/tag/v9.9.9", published_at: "2026-07-31T00:00:00Z",
       assets: [{ name: "outreach-console-update-9.9.9.json", browser_download_url: "https://github.com/VincentRQ/Auto-Following-Up-After-Applications/releases/download/v9.9.9/outreach-console-update-9.9.9.json", digest: `sha256:${hash(bytes)}` }],
     }), { status: 200, headers: { "content-type": "application/json" } });
@@ -92,7 +92,7 @@ test("update checks reject oversized release metadata before parsing it", async 
 
 test("update downloads reject bundles whose declared size exceeds the limit", async () => {
   const fetchImpl = async (url) => {
-    if (url.includes("api.github.com")) return new Response(JSON.stringify({
+    if (new URL(String(url)).hostname === "api.github.com") return new Response(JSON.stringify({
       tag_name: "v2.0.0",
       assets: [{ name: "outreach-console-update-2.0.0.json", browser_download_url: "https://github.com/VincentRQ/Auto-Following-Up-After-Applications/releases/download/v2.0.0/outreach-console-update-2.0.0.json" }],
     }), { status: 200 });

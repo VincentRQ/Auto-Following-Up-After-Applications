@@ -9,6 +9,13 @@ path could have redirected a file replacement. The updater now rejects links in
 those paths, and a regression test confirms that no file is written through the
 link.
 
+GitHub CodeQL also identified two URL-substring checks in updater mocks and two
+intentional network-to-file writes in the updater. The mocks now parse and compare
+the exact host. The staging writes are retained because downloading an update is
+their purpose; they are limited to the approved GitHub hosts, 50 MiB response cap,
+semantic version and asset name, managed-path allowlist, per-file hashes, optional
+GitHub digest, fixed staging directory, and symlink/junction checks.
+
 This was a zero-spend review. The current official
 `@openai/codex-security` version was resolved as `0.1.5`, but its model-backed scan
 was not run because the operator required that this pass incur no usage charge.

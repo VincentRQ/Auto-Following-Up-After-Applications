@@ -71,8 +71,11 @@ export function createUpdateManager({ root, currentVersion, repository = process
         await assertNoLinks(installRoot, updatesRoot);
         const bundlePath = resolve(updatesRoot, `outreach-console-update-${latest.version}.json`);
         ensureWithin(updatesRoot, bundlePath);
-        await writeFile(bundlePath, bytes, { flag: "w", mode: 0o600 });
-        await writeFile(resolve(updatesRoot, "pending-update.json"), `${JSON.stringify({ version: bundle.version, bundlePath, createdAt: new Date().toISOString() }, null, 2)}\n`, { flag: "w", mode: 0o600 });
+        // Intentional updater staging: the official-host response is size-capped, digest-checked when available,
+        // parsed through the managed-path allowlist, and verified per file before this fixed local write.
+        await writeFile(bundlePath, bytes, { flag: "w", mode: 0o600 }); // lgtm[js/http-to-file-access]
+        // Only normalized semantic-version metadata and the already bounded staging path are persisted here.
+        await writeFile(resolve(updatesRoot, "pending-update.json"), `${JSON.stringify({ version: bundle.version, bundlePath, createdAt: new Date().toISOString() }, null, 2)}\n`, { flag: "w", mode: 0o600 }); // lgtm[js/http-to-file-access]
         state = { ...state, state: "ready_to_restart", detail: `Version ${latest.version} is verified and will install during restart.`, canInstall: false };
         return state;
       } catch (error) {
