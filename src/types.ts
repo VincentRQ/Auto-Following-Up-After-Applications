@@ -34,6 +34,7 @@ export interface JobRow {
   appliedAt: string;
   lastWorkedAt: string;
   sentAt: string;
+  followUpDueAt?: string;
   contactsFound: number | null;
   notes: string;
   importedAt: string;
@@ -105,6 +106,7 @@ export interface StorageSettings {
 }
 
 export type ColorTheme = "terminal" | "light" | "graphite" | "mulberry" | "high_contrast";
+export type InterfaceMode = "simple" | "advanced";
 export type InterfaceDensity = "compact" | "comfortable";
 export type AccentColor = "green" | "cyan" | "amber" | "rose" | "violet";
 export type BackgroundEffect = "off" | "scanlines" | "grid_drift" | "signal_sweep" | "data_points" | "circuit_traces";
@@ -120,7 +122,10 @@ export interface ModuleVisibility {
 }
 
 export interface WorkflowPreferences {
-  version: 1;
+  version: 2;
+  interfaceMode: InterfaceMode;
+  showProcessRail: boolean;
+  showGuidancePanel: boolean;
   colorTheme: ColorTheme;
   density: InterfaceDensity;
   accentColor: AccentColor;
@@ -133,9 +138,21 @@ export interface WorkflowPreferences {
   requireDraftReview: boolean;
   requireSendApproval: boolean;
   autoPrepareRedirectDrafts: boolean;
+  followUpDays: number;
+  dailyQueueLimit: number;
+  dailySummaryEnabled: boolean;
+  providerCreditMode: "ask" | "allow" | "never";
   leftPanelWidth: number;
   rightPanelWidth: number;
   modules: ModuleVisibility;
+}
+
+export interface DailyQueueState {
+  version: 1;
+  date: string;
+  jobIds: string[];
+  lastDestination: string;
+  updatedAt: string;
 }
 
 export interface WorkspaceTutorialState {
@@ -412,7 +429,7 @@ export interface OnboardingState {
 }
 
 export interface WorkspaceSnapshot {
-  version: 2;
+  version: 3;
   exportedAt: string;
   profiles: ProfileDefinition[];
   jobs: JobRow[];
@@ -424,6 +441,21 @@ export interface WorkspaceSnapshot {
   calendar: CalendarPreferences;
   storage: StorageSettings;
   workflow: WorkflowPreferences;
+  dailyQueue?: DailyQueueState;
+}
+
+export type UpdateState = "idle" | "checking" | "current" | "available" | "downloading" | "ready_to_restart" | "restarting" | "unsupported" | "error";
+
+export interface ReleaseUpdateStatus {
+  state: UpdateState;
+  currentVersion: string;
+  latestVersion: string;
+  releaseName: string;
+  releaseUrl: string;
+  publishedAt: string;
+  detail: string;
+  canInstall: boolean;
+  checkedAt: string;
 }
 
 export interface WorkspaceResetPreview {

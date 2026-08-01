@@ -44,7 +44,7 @@ Do not flatten this into one spreadsheet row per email. Multiple roles at one co
 
 ## Operating Sequence
 
-1. Read setup status and backend health.
+1. Read the saved AI ownership, storage mode, setup status, and backend health.
 2. Import or normalize application rows.
 3. Resolve the profile for every selected job. Reject ambiguity.
 4. Check company history, cooldown, suppression, prior contacts, and prior replies.
@@ -54,6 +54,11 @@ Do not flatten this into one spreadsheet row per email. Multiple roles at one co
 8. Request exact approval for state-changing provider work.
 9. Record accepted sends as pending reconciliation.
 10. Ingest mailbox events and update application, company, and recovery state.
+
+The GUI exposes the same sequence through Today and the persistent process rail.
+Do not bypass a blocker by inventing contacts or changing the selected AI ownership.
+Browser-only means provider work is manual even if stale provider names exist in an
+older imported configuration.
 
 ## Writing Contract
 
@@ -92,7 +97,7 @@ Keep vendor SDKs optional. Do not add them to base runtime dependencies. A helpe
 
 - Browser mode uses IndexedDB and namespaced local-storage keys.
 - SQLite mode uses Node's bundled SQLite under `data/outreach.sqlite` by default.
-- External mode sends a versioned snapshot to a private adapter that follows `public/DATABASE_ADAPTER_CONTRACT.md`.
+- External mode sends a version 3 workspace snapshot to a private adapter that follows `public/DATABASE_ADAPTER_CONTRACT.md`.
 
 `Start Fresh` downloads a browser backup, optionally creates a consistent SQLite backup, and clears only Outreach Console records. It preserves source files, resumes, credentials, provider setup, CLI logins, and external databases.
 
@@ -115,6 +120,13 @@ When adding a backend capability, add fake-adapter tests and keep public sample 
 The source checkout contains the TypeScript compiler, Vite, Vitest, React types, and other development packages. Operators receive a Lite archive with no `node_modules` and no runtime npm dependencies.
 
 The Lite package includes the built GUI, backend, MCP bundle, schemas, docs, sample data, operator skill, and platform launchers. Packaging fails above 50 MiB.
+
+Lite updates are signed by structure rather than executable installer code: the
+application downloads the version-matched JSON asset from an approved GitHub host,
+checks GitHub's digest when present, checks every internal file hash, rejects
+unmanaged paths, stages under `data/updates`, and applies with backup and rollback.
+Never add `data/`, credentials, resumes, linked files, or arbitrary executable paths
+to the updater's managed set.
 
 Run:
 

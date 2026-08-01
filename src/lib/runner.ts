@@ -25,7 +25,7 @@ export function buildBatchReport(jobs: JobRow[], settings: BatchSettings): Batch
 export function classifyContactQuality(job: JobRow, contactTarget: number): ContactQuality {
   const notes = job.notes.toLowerCase();
   if (notes.includes("no clean") || notes.includes("no usable") || notes.includes("not found")) return "missing";
-  if (job.contactsFound === null) return "thin";
+  if (job.contactsFound === null) return "missing";
   if (job.contactsFound <= 0) return "missing";
   if (job.contactsFound < contactTarget) return "thin";
   return "clean";
@@ -44,14 +44,14 @@ function buildReportItem(job: JobRow, contactTarget: number): ReportItem {
       details: ["Outreach already marked sent", ...details],
     };
   }
-  if (!job.company || !job.roleTitle || !job.jobUrl || job.profile === "unassigned") {
+  if (!job.company || !job.roleTitle || !job.jobUrl || job.profile === "unassigned" || contactQuality === "missing") {
     return {
       jobId: job.jobId,
       company: job.company || "Unknown company",
       roleTitle: job.roleTitle || "Unknown role",
       outcome: "skipped",
       contactQuality,
-      details: ["Missing required company, role, URL, or profile", ...details],
+      details: [contactQuality === "missing" ? "Contact discovery or manual contact entry is required" : "Missing required company, role, URL, or profile", ...details],
     };
   }
   return {

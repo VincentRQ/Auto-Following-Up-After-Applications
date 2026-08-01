@@ -1,66 +1,59 @@
 # Outreach Console Lite
 
-This is the prebuilt, install-free distribution of Outreach Console. It contains
-the browser interface, local Node backend, standalone MCP server, public schemas,
-and documentation. It does not contain the React/Vite/TypeScript development
-toolchain or a `node_modules` folder.
+Lite is the normal download for people who want to use Outreach Console rather than develop it. It contains the built interface, local service, MCP server, public schemas, operator skill, and help files. It has no `node_modules` folder and needs no `npm install`.
 
-## Start
+## Start on Windows
 
-1. Install Node 24 or newer.
-2. Extract the `.tgz` archive. Current Windows, macOS, and Linux versions include
-   `tar`; graphical archive tools can also open it.
-3. From the extracted `package` folder:
+1. Download `outreach-console-lite-<version>.zip` from the latest GitHub release.
+2. Extract the ZIP.
+3. Open the extracted `outreach-console-lite-<version>` folder.
+4. Double-click `Start Outreach Console.cmd`.
 
-   - Windows: double-click `Start Outreach Console.cmd`.
-   - macOS or Linux: run `./start-outreach-console.sh`.
+If Node 24 is missing, the launcher asks before downloading a portable Windows runtime from nodejs.org. It verifies the checksum published by Node.js and keeps the runtime under `.runtime/node` inside the application folder. It does not change the system Node installation.
 
-   To run a hard-locked demonstration instead, use
-   `Start Outreach Console - Sample Mode.cmd` on Windows or
-   `./start-outreach-console-sample.sh` on macOS/Linux. Then load the synthetic
-   rows from Data Source. This mode cannot call provider helpers, plan CLIs, APIs,
-   mailboxes, or live sends.
+## Start on macOS or Linux
 
-   The equivalent terminal command on any platform is:
+On macOS, open `Start Outreach Console.command`. If macOS blocks the first launch, right-click it and choose **Open**. On Linux, run:
 
-   ```powershell
-   node start.mjs
-   ```
+```sh
+./start-outreach-console.sh
+```
 
-4. The launcher opens `http://127.0.0.1:43127` in the default browser.
+The launcher uses an existing Node 24 installation when available. Otherwise, it asks before downloading a portable runtime from nodejs.org and checks its SHA-256 digest. The `.tgz` release remains available for terminal users.
 
-No `npm install`, database server, container runtime, or vendor SDK is required.
-Embedded SQLite is supplied by Node. Browser-only mode remains available when no
-durable local history is wanted.
+Every launcher opens `http://127.0.0.1:43127`. Nothing is hosted online, and no account is created.
+
+Lite uses a portable ZIP rather than an unsigned installer. The first extraction
+is manual, but the app's Settings update button handles compatible releases after
+v0.5.0. A signed single-file desktop installer would exceed the project's current
+size, signing, and maintenance boundaries.
+
+## Try It Without Connections
+
+Use the launcher with **Sample Mode** in its name, then load the synthetic rows from Application files. Public Sample Mode cannot call contact providers, plan CLIs, APIs, mailboxes, or live sends. It also ignores an existing private database.
+
+The ordinary launcher can also use browser-only storage. In that mode, imports, manual contacts, templates, writing, daily queues, and dry checks work locally. Contact discovery, email handling, reply monitoring, and automatic recovery remain manual.
+
+## First Run
+
+The setup wizard asks how AI should operate, where to store work, which profiles to use, and whether any providers should be connected. Browser-only mode hides provider controls that cannot run. A provider does not become ready until its own test succeeds.
+
+The main screen opens on Today. Use **Continue where I left off**, or open **How it works** for the short workflow and a synthetic guided run.
+
+## Updates
+
+Settings has **Check for updates**. A newer release can be downloaded, verified, installed, and restarted from the same screen. The updater backs up managed application files and preserves everything under `data/`, along with resumes, linked files, credentials, and external databases. Read `docs/UPDATES.md` for the exact boundary and manual fallback.
 
 ## MCP
 
-The standalone MCP entry point is `mcp/outreach-mcp.js`. Start the GUI/backend
-first, then configure an MCP client to run:
+Start the application first. Then point a compatible MCP client at:
 
 ```text
-node C:/absolute/path/to/package/mcp/outreach-mcp.js
+node C:/absolute/path/to/outreach-console-lite-<version>/mcp/outreach-mcp.js
 ```
 
-The default backend address is `http://127.0.0.1:43127`. Provider actions,
-contact details, mailbox content, and live sending remain off until explicitly
-enabled. See the MCP and security documents under `docs/` before changing them.
+The default backend is `http://127.0.0.1:43127`. Contact details, mailbox content, provider actions, and live sending remain separately disabled until you enable their documented gates.
 
-## Optional services
+## Package Size
 
-Contact discovery, mailbox access, and AI writing are adapters, not bundled
-vendor clients. Configure only the services you use. Their credentials remain in
-local environment variables, their own CLI credential stores, or ignored local
-configuration files.
-
-The source repository is intentionally larger after `npm install` because it
-contains compilers, tests, type definitions, and the local development server.
-Those tools are not shipped in this Lite archive and are not loaded by ordinary
-users.
-
-## Size contract
-
-Release packaging fails when this archive exceeds 50 MiB. The manifest records
-every bundled file, its size, and SHA-256 digest. The release excludes source maps,
-test fixtures, package caches, development logs, local databases, resumes,
-spreadsheets, credentials, and provider work files.
+The build fails if the Lite ZIP, `.tgz`, or update bundle exceeds 50 MiB. Version 0.5.0 is under 3 MiB before the optional portable Node runtime is downloaded. The package excludes source maps, test tooling, package caches, development logs, local databases, resumes, spreadsheets, credentials, and provider work files.

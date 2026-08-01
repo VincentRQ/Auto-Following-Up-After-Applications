@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clearLocalApplicationState, loadAiConnection, loadProfiles, normalizeAiConnectionSettings, normalizeProfileDefinitions, saveAiConnection, storageKeys } from "./storage";
+import { clearLocalApplicationState, loadAiConnection, loadDailyQueueState, loadProfiles, normalizeAiConnectionSettings, normalizeProfileDefinitions, saveAiConnection, storageKeys } from "./storage";
 
 class MemoryStorage implements Storage {
   #values = new Map<string, string>();
@@ -74,6 +74,13 @@ describe("local application reset", () => {
     localStorage.setItem(storageKeys.aiConnection, JSON.stringify({ mode: "groq_api", controlMode: "in_app" }));
     const value = loadAiConnection({ controlMode: "external_operator", mode: "manual", model: "", baseUrl: "", apiKeyEnv: "", strictPlanOnly: false });
     expect(value.apiKeyEnv).toBe("GROQ_API_KEY");
+  });
+
+  it("deduplicates saved queue rows and rejects unknown destinations", () => {
+    localStorage.setItem(storageKeys.dailyQueue, JSON.stringify({ date: "2026-07-31", jobIds: ["job-1", "job-1", "", "job-2"], lastDestination: "javascript:alert(1)", updatedAt: "now" }));
+    const queue = loadDailyQueueState({ version: 1, date: "2026-07-31", jobIds: [], lastDestination: "today", updatedAt: "" });
+    expect(queue.jobIds).toEqual(["job-1", "job-2"]);
+    expect(queue.lastDestination).toBe("today");
   });
 
   it("normalizes untrusted workspace profiles and configuration values", () => {

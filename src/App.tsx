@@ -18,6 +18,7 @@ import {
   GripVertical,
   Github,
   HardDriveDownload,
+  Home,
   Inbox,
   Link2,
   Mail,
@@ -38,6 +39,7 @@ import {
   Upload,
   UserPlus,
   Users,
+  Workflow,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
@@ -50,6 +52,7 @@ import type {
   BatchReport,
   BatchSettings,
   CalendarPreferences,
+  DailyQueueState,
   CrmCompany,
   CrmCompanyDetail,
   DashboardData,
@@ -66,6 +69,7 @@ import type {
   SourceFileState,
   StorageSettings,
   RecoveryException,
+  ReleaseUpdateStatus,
   WorkflowPreferences,
   WritingPreferences,
   WorkspaceResetPreview,
@@ -83,6 +87,7 @@ import {
   checkExternalStorageAdapter,
   checkBackendHealth,
   checkAiConnection,
+  checkForUpdates,
   addCrmContact,
   downloadJson,
   downloadText,
@@ -92,10 +97,14 @@ import {
   fetchDashboard,
   fetchCrmCompanies,
   fetchCrmCompany,
+  importApplicationsToBackend,
+  enrichCrmCompany,
   fetchRecoveryExceptions,
   fetchMailboxEvents,
   fetchSetupStatus,
+  fetchUpdateStatus,
   generateMessages,
+  installUpdateAndRestart,
   loadExternalWorkspace,
   saveIntegrationPreferences,
   recordHistoricalOutreach,
@@ -116,6 +125,7 @@ import {
   loadInstructions,
   loadJobs,
   loadCalendarPreferences,
+  loadDailyQueueState,
   loadMessageDrafts,
   loadProfiles,
   loadOnboardingState,
@@ -141,17 +151,25 @@ import { CustomizationView } from "./components/CustomizationView";
 import { StorageSetup } from "./components/StorageSetup";
 import { ApplicationEntryModal, type NewApplicationInput } from "./components/ApplicationEntryModal";
 import { WorkspaceTutorial, type TutorialTarget } from "./components/WorkspaceTutorial";
+import { ProcessRail } from "./components/ProcessRail";
+import { WorkflowCompass } from "./components/WorkflowCompass";
+import { TodayView } from "./components/TodayView";
+import { HowItWorks } from "./components/HowItWorks";
+import { ManualContactModal, type ManualContactInput } from "./components/ManualContactModal";
 import { buildCalendarEvents, buildCalendarIcs, calendarEventKinds, defaultCalendarPreferences, normalizeCalendarPreferences, selectCalendarEvents, toDateKey, type CalendarEvent } from "./lib/calendar";
 import { FALLBACK_BACKEND_URL, resolveDefaultBackendUrl } from "./lib/backend-url";
 import { decideSchedule } from "./lib/schedule";
+import { prepareMessageDrafts } from "./lib/drafts";
+import { buildRoutineSummary, emptyDailyQueue, isQueueCurrent, localDateKey } from "./lib/routine";
+import { buildProcessStages, buildWorkflowGuidance, type ProcessDestination } from "./lib/workflow-guide";
 
 type ImportState = "idle" | "loading" | "ready" | "error";
-type WorkspaceTab = "jobs" | "writing" | "source" | "calendar" | "profiles" | "customize";
+type WorkspaceTab = "today" | "jobs" | "writing" | "activity" | "settings" | "how" | "source" | "calendar" | "profiles" | "customize";
 type ImportIntent = "linked" | "upload" | null;
 
-const APP_VERSION = "0.4.0";
+const APP_VERSION = "0.5.0";
 const BUG_ISSUE_URL = "https://github.com/VincentRQ/Auto-Following-Up-After-Applications/issues/new?template=bug_report.yml";
-const SUPPORT_EMAIL_URL = "mailto:Vincent@Rosette.Solutions?subject=Outreach%20Console%20help&body=Version%3A%200.4.0%0A%0AWhat%20happened%3A%0A%0ASteps%20to%20reproduce%3A%0A";
+const SUPPORT_EMAIL_URL = "mailto:Vincent@Rosette.Solutions?subject=Outreach%20Console%20help&body=Version%3A%200.5.0%0A%0AWhat%20happened%3A%0A%0ASteps%20to%20reproduce%3A%0A";
 const FRESH_START_CONFIRMATION = "START FRESH";
 const defaultSchedule = formatLocalInputDate(new Date(Date.now() + 10 * 60_000));
 const defaultInstructions: BatchInstructions = {
@@ -208,7 +226,7 @@ export function App() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [profiles, setProfiles] = useState<ProfileDefinition[]>(loadProfiles);
   const [profile, setProfile] = useState<ProfileKey>("data_analyst");
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("jobs");
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("today");
   const [newProfileLabel, setNewProfileLabel] = useState("");
   const [newProfileSender, setNewProfileSender] = useState("");
   const [query, setQuery] = useState("");
@@ -218,6 +236,7 @@ export function App() {
   const [storage, setStorage] = useState<StorageSettings>(() => loadStorageSettings(defaultStorageSettings));
   const [writing, setWriting] = useState<WritingPreferences>(() => loadWritingPreferences(defaultWritingPreferences));
   const [drafts, setDrafts] = useState<MessageDraft[]>(loadMessageDrafts);
+  const [dailyQueue, setDailyQueue] = useState<DailyQueueState>(() => loadDailyQueueState(emptyDailyQueue()));
   const [scheduledAt, setScheduledAt] = useState(defaultSchedule);
   const [spacingSeconds, setSpacingSeconds] = useState(() => loadWorkflowPreferences(defaultWorkflowPreferences).defaultSpacingSeconds);
   const [contactTarget, setContactTarget] = useState(() => loadWorkflowPreferences(defaultWorkflowPreferences).defaultContactTarget);
@@ -242,6 +261,7 @@ export function App() {
   });
   const [tutorialTarget, setTutorialTarget] = useState<TutorialTarget | "">("");
   const [showApplicationEntry, setShowApplicationEntry] = useState(false);
+  const [manualContactJobId, setManualContactJobId] = useState("");
   const [showFreshStart, setShowFreshStart] = useState(false);
   const [onboardingEntryStep, setOnboardingEntryStep] = useState(() => loadOnboardingState(defaultOnboardingState).lastStep);
   const [instructions, setInstructions] = useState<BatchInstructions>(() => loadInstructions(defaultInstructions));
@@ -270,6 +290,7 @@ export function App() {
   const [mailboxEvents, setMailboxEvents] = useState<MailboxEvent[]>([]);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<ReleaseUpdateStatus>({ state: "idle", currentVersion: APP_VERSION, latestVersion: "", releaseName: "", releaseUrl: "", publishedAt: "", detail: "Check the official release when you are ready.", canInstall: false, checkedAt: "" });
   const [backendDataError, setBackendDataError] = useState("");
   const [externalStorageStatus, setExternalStorageStatus] = useState("");
   const [isRunning, setIsRunning] = useState(false);
@@ -333,6 +354,31 @@ export function App() {
     [profile, scheduledAt, spacingSeconds, contactTarget, selectedIds, instructions, runMode, backendUrl, aiConnection],
   );
   const preflight = useMemo(() => buildPreflight(jobs, batchSettings), [jobs, batchSettings]);
+  const routine = useMemo(
+    () => buildRoutineSummary(jobs.filter((job) => job.profile === profile), drafts, workflow.followUpDays, workflow.dailyQueueLimit),
+    [jobs, drafts, profile, workflow.followUpDays, workflow.dailyQueueLimit],
+  );
+  const scheduledCount = useMemo(() => {
+    if (armedSettings) {
+      const armed = new Set(armedSettings.selectedIds);
+      const prepared = drafts.filter((draft) => armed.has(draft.jobRowId) && draft.status !== "sent").length;
+      return prepared || armedSettings.selectedIds.length;
+    }
+    return jobs.filter((job) => job.status === "queued").length;
+  }, [armedSettings, drafts, jobs]);
+  const connectedServices = storage.mode !== "browser" && backendHealth.status === "ok" && (setupStatus?.providers ?? []).some((item) => item.status === "configured");
+  const guideInput = useMemo(() => ({
+    allJobs: jobs,
+    selectedJobs,
+    drafts,
+    preflight,
+    scheduledCount,
+    mailboxEvents,
+    recoveryExceptions,
+    connectedServices,
+  }), [jobs, selectedJobs, drafts, preflight, scheduledCount, mailboxEvents, recoveryExceptions, connectedServices]);
+  const processStages = useMemo(() => buildProcessStages(guideInput), [guideInput]);
+  const workflowGuidance = useMemo(() => buildWorkflowGuidance(guideInput), [guideInput]);
 
   useEffect(() => {
     if (!armedSettings) return;
@@ -423,6 +469,19 @@ export function App() {
   useEffect(() => {
     saveJson(storageKeys.drafts, drafts);
   }, [drafts]);
+
+  useEffect(() => {
+    void fetchUpdateStatus(backendUrl).then(setUpdateStatus).catch(() => undefined);
+  }, [backendUrl]);
+
+  useEffect(() => {
+    saveJson(storageKeys.dailyQueue, dailyQueue);
+  }, [dailyQueue]);
+
+  useEffect(() => {
+    setWriting((previous) => enforceWritingOwnership(previous, aiConnection.controlMode));
+    setDrafts((previous) => previous.map((draft) => writingModeAllowed(draft.mode, aiConnection.controlMode) ? draft : { ...draft, mode: defaultWritingMode(aiConnection.controlMode), updatedAt: new Date().toISOString() }));
+  }, [aiConnection.controlMode]);
 
   useEffect(() => {
     if (storage.mode === "browser" && runMode === "backend") setRunMode("dry_run");
@@ -637,7 +696,7 @@ export function App() {
     setProfiles((current) => current.some((item) => item.key === sampleProfile) ? current : [...current, { key: sampleProfile, label: "Customer Success", senderName: "Sample Candidate", senderEmail: "", resumeLabel: "", notes: "Synthetic public demonstration profile.", accent: "#f0b95e" }]);
     setProfile(sampleProfile);
     setJobs(sample);
-    setSelectedIds(new Set(["sample-1", "sample-3"]));
+    setSelectedIds(new Set(["sample-1"]));
     setImportMeta({ fileName: "sample-applications.csv", sheetName: "Sample", warnings: [], importedSheets: ["Sample"] });
     setSourceHandle(null);
     void forgetLinkedSource();
@@ -728,6 +787,56 @@ export function App() {
     pushConsole(`Selected ${readyIds.length} ready queue rows.`);
   }
 
+  function navigateWorkflow(destination: ProcessDestination) {
+    setWorkspaceTab(destination);
+    if (destination === "activity") setRightTab(preflight.blockedCount ? "queue" : mailboxEvents.length ? "mailbox" : "report");
+    if (destination === "settings") setRightTab("setup");
+    setDailyQueue((previous) => ({ ...previous, lastDestination: destination, updatedAt: new Date().toISOString() }));
+  }
+
+  function saveSuggestedDailyQueue() {
+    const now = new Date();
+    setDailyQueue({ version: 1, date: localDateKey(now), jobIds: routine.suggestedJobIds, lastDestination: "jobs", updatedAt: now.toISOString() });
+    pushConsole(`Saved ${routine.suggestedJobIds.length} application${routine.suggestedJobIds.length === 1 ? "" : "s"} to today's queue.`);
+  }
+
+  function resumeDailyQueue() {
+    const existing = new Set(jobs.map((job) => job.id));
+    const available = dailyQueue.jobIds.filter((id) => existing.has(id));
+    const first = jobs.find((job) => available.includes(job.id));
+    if (!first) {
+      setDailyQueue(emptyDailyQueue());
+      pushConsole("The saved daily queue no longer contains available applications.");
+      return;
+    }
+    const sameProfile = jobs.filter((job) => available.includes(job.id) && job.profile === first.profile).map((job) => job.id);
+    setProfile(first.profile);
+    setSelectedIds(new Set(sameProfile));
+    const resumableDestinations: ProcessDestination[] = ["today", "jobs", "writing", "activity", "settings"];
+    setWorkspaceTab(resumableDestinations.includes(dailyQueue.lastDestination as ProcessDestination) ? dailyQueue.lastDestination as ProcessDestination : "jobs");
+    pushConsole(`Resumed ${sameProfile.length} saved application${sameProfile.length === 1 ? "" : "s"} for ${profileLabel(first.profile, profiles)}.`);
+  }
+
+  function updateAiOwnership(next: AiConnectionSettings) {
+    setAiConnection(next);
+    setWriting((previous) => enforceWritingOwnership(previous, next.controlMode));
+  }
+
+  function runSyntheticDemoStep(index: number) {
+    if (index === 2) setSelectedIds(new Set(["sample-1"]));
+    if (index === 3) {
+      const sample = jobs.filter((job) => job.id === "sample-1");
+      const candidate = profiles.find((item) => item.key === "customer_success");
+      const next = prepareMessageDrafts(sample, drafts, 3, { ...writing, mode: "template" }, candidate?.senderName ?? "Sample Candidate", candidate?.notes ?? "customer operations and reporting");
+      setDrafts(next.map((draft, draftIndex) => ({ ...draft, recipientName: ["Taylor Morgan", "Jordan Lee", "Casey Rivera"][draftIndex] ?? `Recruiter ${draftIndex + 1}`, recipientEmail: `sample.recruiter${draftIndex + 1}@example.invalid`, recipientTitle: "Talent Acquisition", status: "ready" })));
+    }
+    if (index === 4) setDrafts((previous) => previous.map((draft) => draft.jobRowId === "sample-1" ? { ...draft, status: "approved", updatedAt: new Date().toISOString() } : draft));
+    if (index === 5) {
+      const demoSettings: BatchSettings = { ...batchSettings, profile: "customer_success", selectedIds: ["sample-1"], mode: "dry_run", scheduledAt: formatLocalInputDate(new Date()) };
+      void runBatch(demoSettings);
+    }
+  }
+
   function updateJob(jobId: string, update: Partial<JobRow>) {
     setJobs((previous) => previous.map((job) => {
       if (job.id !== jobId) return job;
@@ -782,6 +891,66 @@ export function App() {
     pushConsole(`Removed ${job.roleTitle || "application"} at ${job.company || "unknown company"}.`);
   }
 
+  function removeFromBatch(jobId: string) {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      next.delete(jobId);
+      return next;
+    });
+    pushConsole("Application removed from the current batch. Its saved record was not deleted.");
+  }
+
+  function saveManualContact(job: JobRow, input: ManualContactInput) {
+    const candidate = profiles.find((item) => item.key === job.profile);
+    const updatedJob = { ...job, contactsFound: Math.max(1, job.contactsFound ?? 0), lastWorkedAt: new Date().toISOString() };
+    setJobs((previous) => previous.map((item) => item.id === job.id ? updatedJob : item));
+    const nextDrafts = prepareMessageDrafts([updatedJob], drafts, contactTarget, writing, candidate?.senderName ?? "", candidate?.notes ?? "relevant work in the field");
+    setDrafts((previous) => {
+      const other = previous.filter((draft) => draft.jobRowId !== job.id);
+      const first = nextDrafts[0];
+      if (!first) return previous;
+      return [...other, { ...first, recipientName: input.name, recipientTitle: input.title, recipientEmail: input.email, status: first.body.trim() ? "ready" : "needs_writing", updatedAt: new Date().toISOString() }, ...nextDrafts.slice(1)];
+    });
+    setManualContactJobId("");
+    setWorkspaceTab("writing");
+    markApplicationDataChanged("The manually entered contact is saved with this workspace's draft state.");
+    pushConsole(`Added ${input.name} as a contact for ${job.company}.`);
+  }
+
+  async function findContactsForJob(job: JobRow) {
+    if (storage.mode === "browser") {
+      pushConsole("Contact discovery needs the lightweight local service. You can still enter a contact manually.");
+      setWorkspaceTab("settings");
+      setRightTab("setup");
+      return;
+    }
+    const primary = setupStatus?.providers?.find((item) => item.role === "primary_enrichment");
+    if (!primary || primary.status !== "configured") {
+      pushConsole("Contact discovery is not ready. Open Settings and pass the selected provider's exact connection test.");
+      setWorkspaceTab("settings");
+      setRightTab("setup");
+      return;
+    }
+    let spendCredits = workflow.providerCreditMode === "allow";
+    if (workflow.providerCreditMode === "ask") {
+      spendCredits = window.confirm(`Find direct contacts for ${job.company}? Depending on your provider, verified email lookup can consume provider credits.`);
+      if (!spendCredits) return;
+    }
+    try {
+      pushConsole(`Finding contacts for ${job.company} through ${primary.label}...`);
+      await importApplicationsToBackend(backendUrl, [job]);
+      const companies = await fetchCrmCompanies(backendUrl);
+      const company = companies.find((item) => item.name.trim().toLowerCase() === job.company.trim().toLowerCase());
+      if (!company) throw new Error("The company could not be matched after import.");
+      const result = await enrichCrmCompany(backendUrl, company.id, contactTarget, spendCredits);
+      setJobs((previous) => previous.map((item) => item.id === job.id ? { ...item, contactsFound: result.savedContacts, lastWorkedAt: new Date().toISOString() } : item));
+      pushConsole(result.savedContacts ? `Saved ${result.savedContacts} verified contact${result.savedContacts === 1 ? "" : "s"} for ${job.company}.` : `No draft-ready contacts were returned for ${job.company}. Enter a contact or remove it from this batch.`);
+      await refreshBackendData();
+    } catch (error) {
+      pushConsole(`Contact discovery failed for ${job.company}: ${error instanceof Error ? error.message : "Unknown error"}. The rest of the batch was not changed.`);
+    }
+  }
+
   function markApplicationDataChanged(message: string) {
     setSourceState((previous) => {
       if (previous.mode === "linked") {
@@ -795,23 +964,26 @@ export function App() {
   function armOrRun() {
     const settings = batchSettings;
     if (storage.mode === "browser" && settings.mode === "backend") {
-      pushConsole("Launch blocked: browser-only storage supports local dry runs. Select SQLite or an existing database before backend submission.");
+      pushConsole("Connected workflow blocked: browser-only storage supports local dry checks. Open Settings and choose SQLite or an existing database.");
       setRunMode("dry_run");
+      setWorkspaceTab("settings");
       return;
     }
     if (!settings.selectedIds.length) {
-      pushConsole("Launch blocked: no jobs selected.");
+      pushConsole("Run blocked: no applications are selected. Select applications or resume today's queue.");
+      setWorkspaceTab("jobs");
       return;
     }
     const currentPreflight = buildPreflight(jobs, settings);
     if (currentPreflight.readyCount === 0) {
-      pushConsole("Launch blocked: no ready jobs after preflight.");
-      setRightTab("debug");
+      pushConsole("Run blocked: no applications are ready. Use Find contacts, Enter contact, or Remove from batch in Activity.");
+      setWorkspaceTab("activity");
+      setRightTab("queue");
       return;
     }
     const scheduleDecision = decideSchedule(settings.scheduledAt);
     if (scheduleDecision === "invalid") {
-      pushConsole("Launch blocked: choose a valid start date and time.");
+      pushConsole("Run blocked: choose a valid start date and time.");
       return;
     }
     if (scheduleDecision === "run_now") {
@@ -820,7 +992,7 @@ export function App() {
       return;
     }
     setArmedSettings(settings);
-    pushConsole(`Batch armed for ${settings.scheduledAt}.`);
+    pushConsole(`${settings.mode === "dry_run" ? "Dry check" : "Connected workflow"} scheduled for ${new Date(settings.scheduledAt).toLocaleString()}.`);
   }
 
   async function runBatch(settings: BatchSettings) {
@@ -876,7 +1048,7 @@ export function App() {
 
   function buildWorkspaceSnapshot(): WorkspaceSnapshot {
     return {
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       profiles,
       jobs,
@@ -888,6 +1060,7 @@ export function App() {
       calendar: calendarPreferences,
       storage: normalizeStorageSettings(storage),
       workflow,
+      dailyQueue,
     };
   }
 
@@ -911,7 +1084,7 @@ export function App() {
   async function importWorkspace(file: File) {
     try {
       const snapshot = JSON.parse(await file.text()) as Partial<WorkspaceSnapshot> & { version?: number };
-      if (![1, 2].includes(snapshot.version ?? 0) || !Array.isArray(snapshot.jobs) || !Array.isArray(snapshot.profiles)) {
+      if (![1, 2, 3].includes(snapshot.version ?? 0) || !Array.isArray(snapshot.jobs) || !Array.isArray(snapshot.profiles)) {
         throw new Error("Workspace file is not valid.");
       }
       applyWorkspaceSnapshot(snapshot);
@@ -941,6 +1114,7 @@ export function App() {
     setCalendarPreferences(normalizeCalendarPreferences(snapshot.calendar));
     setStorage(normalizeStorageSettings(snapshot.storage ?? storage));
     setWorkflow(normalizeWorkflowPreferences(snapshot.workflow));
+    if (snapshot.dailyQueue) setDailyQueue(snapshot.dailyQueue);
     setSelectedIds(new Set());
     setProfile(nextProfiles[0].key);
   }
@@ -975,7 +1149,7 @@ export function App() {
       setStorage(normalizeStorageSettings(value.storage));
       setWriting(normalizeWritingPreferences(value.writing));
       setCalendarPreferences(normalizeCalendarPreferences(value.calendar));
-      if (value.aiConnection) setAiConnection(normalizeAiConnectionSettings(value.aiConnection, defaultAiConnection));
+      if (value.aiConnection) updateAiOwnership(normalizeAiConnectionSettings(value.aiConnection, defaultAiConnection));
       if (value.integrations) setIntegrations({ ...defaultIntegrationSettings, ...value.integrations });
       pushConsole("Configuration imported. Credentials were not read or stored.");
     } catch (error) {
@@ -1035,7 +1209,7 @@ export function App() {
         setExternalStorageStatus("No external workspace exists yet. Push the current workspace to create it.");
         return;
       }
-      if (snapshot.version !== 2 || !Array.isArray(snapshot.jobs) || !Array.isArray(snapshot.profiles)) throw new Error("The adapter returned an incompatible workspace.");
+      if (![2, 3].includes(snapshot.version) || !Array.isArray(snapshot.jobs) || !Array.isArray(snapshot.profiles)) throw new Error("The adapter returned an incompatible workspace.");
       applyWorkspaceSnapshot({ ...snapshot, storage });
       externalSyncReadyRef.current = externalStorageKey(storage);
       setExternalStorageStatus(`External workspace loaded. A local JSON backup was downloaded first.`);
@@ -1052,6 +1226,32 @@ export function App() {
     const result = await checkBackendHealth(backendUrl);
     setBackendHealth(result);
     pushConsole(`Backend health: ${result.status} - ${result.message}`);
+  }
+
+  async function runUpdateCheck() {
+    setUpdateStatus((previous) => ({ ...previous, state: "checking", detail: "Checking the official GitHub release..." }));
+    try { setUpdateStatus(await checkForUpdates(backendUrl)); }
+    catch (error) { setUpdateStatus((previous) => ({ ...previous, state: "error", detail: error instanceof Error ? error.message : "Update check failed.", canInstall: false, checkedAt: new Date().toISOString() })); }
+  }
+
+  async function runUpdateInstall() {
+    setUpdateStatus((previous) => ({ ...previous, state: "downloading", detail: "Downloading and verifying the update...", canInstall: false }));
+    try {
+      const staged = await installUpdateAndRestart(backendUrl);
+      setUpdateStatus({ ...staged, state: "restarting", detail: "Verified update staged. The local service is restarting...", canInstall: false });
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 750));
+        try {
+          const status = await fetchUpdateStatus(backendUrl);
+          if (status.currentVersion === staged.latestVersion) { window.location.reload(); return; }
+        } catch {
+          // A brief connection failure is expected while the local service restarts.
+        }
+      }
+      setUpdateStatus((previous) => ({ ...previous, state: "error", detail: "The update was staged, but the service did not return in time. Reopen Outreach Console to finish." }));
+    } catch (error) {
+      setUpdateStatus((previous) => ({ ...previous, state: "error", detail: error instanceof Error ? error.message : "The update could not be installed.", canInstall: true }));
+    }
   }
 
   async function runAiConnectionCheck() {
@@ -1201,14 +1401,11 @@ export function App() {
 
   function navigateTutorial(target: TutorialTarget) {
     setTutorialTarget(target);
-    if (target === "source") setWorkspaceTab("source");
-    if (target === "tabs") setWorkspaceTab(workflow.modules.profiles ? "profiles" : "jobs");
-    if (["jobs", "left", "right", "mailbox"].includes(target)) setWorkspaceTab("jobs");
+    if (target === "today") setWorkspaceTab("today");
+    if (target === "jobs") setWorkspaceTab("jobs");
     if (target === "writing") setWorkspaceTab("writing");
-    if (target === "calendar") setWorkspaceTab(workflow.modules.calendar ? "calendar" : "customize");
-    if (target === "customize") setWorkspaceTab("customize");
-    if (target === "right") setRightTab("queue");
-    if (target === "mailbox") setRightTab(workflow.modules.mailbox ? "mailbox" : workflow.modules.recovery ? "recovery" : "report");
+    if (target === "activity") setWorkspaceTab("activity");
+    if (target === "settings") setWorkspaceTab("settings");
     window.requestAnimationFrame(() => document.querySelector(`[data-tutorial-region="${target}"]`)?.scrollIntoView({ behavior: workflow.reduceMotion ? "auto" : "smooth", block: "nearest" }));
   }
 
@@ -1263,11 +1460,13 @@ export function App() {
 
   const integrationNeedsAttention = setupStatus?.providers?.some((item) => !["configured", "disabled"].includes(item.status)) ?? false;
   const systemState = storage.mode === "browser" && onboarding.completed
-    ? { state: "ready", label: "Browser mode ready" }
+    ? { state: "manual", label: "Local workspace ready; automation off" }
     : backendHealth.status === "error"
     ? { state: "error", label: "Local service offline" }
     : backendHealth.status !== "ok" || !onboarding.completed || integrationNeedsAttention ? { state: "setup", label: "Setup needs attention" }
       : { state: "ready", label: "Core services ready" };
+  const selectedDraftCount = drafts.filter((draft) => selectedIds.has(draft.jobRowId) && draft.status !== "sent").length;
+  const runActionLabel = describeRunAction(batchSettings, preflight, selectedDraftCount, isRunning);
 
   return (
     <main className="shell" {...workflowAttributes(workflow)}>
@@ -1286,13 +1485,17 @@ export function App() {
           </button>
           <button className="wizard-chip guide-chip" onClick={openTutorial} title="Open the step-by-step operating guide">
             <BookOpen size={16} />
-            <span>Guide</span>
+            <span>Screen tour</span>
+          </button>
+          <button className="wizard-chip guide-chip" onClick={() => setWorkspaceTab("how")} title="Understand the complete workflow">
+            <Workflow size={16} />
+            <span>How it works</span>
           </button>
           <a className="wizard-chip feedback-chip" href={BUG_ISSUE_URL} target="_blank" rel="noreferrer" title="Open a structured GitHub bug ticket">
             <Bug size={16} />
             <span>Share a bug</span>
           </a>
-          <button className={`system-chip ${systemState.state}`} onClick={() => { setWorkspaceTab("jobs"); setRightTab("setup"); void runHealthCheck(); void refreshBackendData(); }}>
+          <button className={`system-chip ${systemState.state}`} onClick={() => { setWorkspaceTab("settings"); setRightTab("setup"); if (storage.mode !== "browser") { void runHealthCheck(); void refreshBackendData(); } }} title="Open service readiness and setup details">
             <Radio size={16} />
             <span>{systemState.label}</span>
           </button>
@@ -1300,9 +1503,10 @@ export function App() {
             <CalendarClock size={16} />
             <span>{armedSettings ? `armed ${formatRelativeSchedule(armedSettings.scheduledAt)}` : "no batch armed"}</span>
           </div>
+          {updateStatus.state === "available" && <button className="system-chip update-available" onClick={() => setWorkspaceTab("settings")}><ArrowDownToLine size={16} /><span>Update {updateStatus.latestVersion}</span></button>}
           <div className="run-chip">
             <HardDriveDownload size={16} />
-            <span>{storage.mode === "browser" ? "browser storage" : storage.mode === "sqlite" ? "SQLite history" : "external database"}</span>
+            <span>{storage.mode === "browser" ? "saved in this browser" : storage.mode === "sqlite" ? "SQLite history" : "external database"}</span>
           </div>
         </div>
       </section>
@@ -1310,16 +1514,23 @@ export function App() {
       {!onboarding.completed && <section className="setup-reminder"><AlertTriangle size={16} /><div><strong>Initial setup is not finished</strong><span>Your saved work is intact. Resume at step {onboarding.lastStep + 1} when ready.</span></div><button className="small-button compact" onClick={() => openOnboarding(onboarding.lastStep)}>Resume setup</button></section>}
 
       <nav className="workspace-tabs" aria-label="Workspace views" data-tutorial-region="tabs" data-tutorial-active={tutorialTarget === "tabs" ? "true" : undefined}>
-        <button className={workspaceTab === "jobs" ? "active" : ""} onClick={() => setWorkspaceTab("jobs")}><FileSpreadsheet size={16} /> Jobs</button>
-        <button className={workspaceTab === "writing" ? "active" : ""} onClick={() => setWorkspaceTab("writing")}><Sparkles size={16} /> Writing</button>
-        <button className={workspaceTab === "source" ? "active" : ""} onClick={() => setWorkspaceTab("source")}><FolderSync size={16} /> Data Source</button>
+        <button className={workspaceTab === "today" ? "active" : ""} onClick={() => setWorkspaceTab("today")}><Home size={16} /> Today</button>
+        <button className={workspaceTab === "jobs" ? "active" : ""} onClick={() => setWorkspaceTab("jobs")}><FileSpreadsheet size={16} /> Applications</button>
+        <button className={workspaceTab === "writing" ? "active" : ""} onClick={() => setWorkspaceTab("writing")}><Sparkles size={16} /> Messages</button>
+        <button className={workspaceTab === "activity" ? "active" : ""} onClick={() => setWorkspaceTab("activity")}><Inbox size={16} /> Activity</button>
+        <button className={workspaceTab === "settings" ? "active" : ""} onClick={() => setWorkspaceTab("settings")}><Settings size={16} /> Settings</button>
+        {workflow.interfaceMode === "advanced" && <><button className={workspaceTab === "source" ? "active" : ""} onClick={() => setWorkspaceTab("source")}><FolderSync size={16} /> Data Source</button>
         {workflow.modules.calendar && <button className={workspaceTab === "calendar" ? "active" : ""} onClick={() => setWorkspaceTab("calendar")}><CalendarDays size={16} /> Calendar</button>}
         {workflow.modules.profiles && <button className={workspaceTab === "profiles" ? "active" : ""} onClick={() => setWorkspaceTab("profiles")}><Users size={16} /> Profiles</button>}
-        <button className={workspaceTab === "customize" ? "active" : ""} onClick={() => setWorkspaceTab("customize")}><SlidersHorizontal size={16} /> Customize</button>
+        <button className={workspaceTab === "customize" ? "active" : ""} onClick={() => setWorkspaceTab("customize")}><SlidersHorizontal size={16} /> Customize</button></>}
+        <button className="view-mode-toggle" onClick={() => setWorkflow((previous) => ({ ...previous, interfaceMode: previous.interfaceMode === "simple" ? "advanced" : "simple" }))}><SlidersHorizontal size={15} /> {workflow.interfaceMode === "simple" ? "Advanced view" : "Simple view"}</button>
       </nav>
 
-      <section className="layout" style={{ "--left-panel-width": `${workflow.leftPanelWidth}px`, "--right-panel-width": `${workflow.rightPanelWidth}px` } as CSSProperties}>
-        <aside className="side-panel" data-tutorial-region="left" data-tutorial-active={tutorialTarget === "left" ? "true" : undefined}>
+      {workflow.showProcessRail && <ProcessRail stages={processStages} onNavigate={navigateWorkflow} />}
+      {workflow.showGuidancePanel && workspaceTab !== "how" && <WorkflowCompass guidance={workflowGuidance} onContinue={navigateWorkflow} />}
+
+      <section className={`layout ${workflow.interfaceMode}-layout`} style={{ "--left-panel-width": `${workflow.leftPanelWidth}px`, "--right-panel-width": `${workflow.rightPanelWidth}px` } as CSSProperties}>
+        <aside className="side-panel">
           <PanelTitle icon={<FolderSync size={16} />} label="Data Source" />
           <button className={`source-summary ${sourceState.syncState}`} onClick={() => setWorkspaceTab("source")}>
             <span>{sourceState.fileName || "No file connected"}</span>
@@ -1336,7 +1547,7 @@ export function App() {
           </label>
           <button className="ghost-button" onClick={() => setWorkspaceTab("profiles")}><Settings size={16} /> Manage profiles</button>
 
-          <PanelTitle icon={<CalendarClock size={16} />} label="Launch" />
+          <PanelTitle icon={<CalendarClock size={16} />} label="Schedule messages" />
           <label className="field">
             <span>Start</span>
             <input name="scheduled-at" type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} />
@@ -1353,7 +1564,7 @@ export function App() {
             />
           </label>
           <label className="field">
-            <span>Contact target</span>
+            <span>People per company</span>
             <input
               name="contact-target"
               type="number"
@@ -1364,14 +1575,14 @@ export function App() {
             />
           </label>
           <label className="field">
-            <span>Run mode</span>
+            <span>How to run</span>
             <select name="run-mode" value={runMode} onChange={(event) => setRunMode(event.target.value as RunMode)}>
-              <option value="dry_run">dry run</option>
-              <option value="backend" disabled={storage.mode === "browser"}>backend submit (requires durable storage)</option>
+              <option value="dry_run">Run a dry check only</option>
+              <option value="backend" disabled={storage.mode === "browser"}>Use connected services</option>
             </select>
           </label>
           <label className="field">
-            <span>Backend URL</span>
+            <span>Local service address</span>
             <input name="backend-url" value={backendUrl} onChange={(event) => setBackendUrl(event.target.value)} placeholder={DEFAULT_BACKEND_URL} />
           </label>
           <button className="ghost-button" onClick={() => void runHealthCheck()}>
@@ -1380,7 +1591,7 @@ export function App() {
           </button>
           <button className="launch-button" onClick={armOrRun} disabled={isRunning}>
             <Play size={17} />
-            {isRunning ? "Running" : "Launch"}
+            {runActionLabel}
           </button>
         </aside>
 
@@ -1391,7 +1602,71 @@ export function App() {
         }}><GripVertical size={16} /></div>
 
         <section className="main-panel">
+          {workspaceTab === "today" && <div data-tutorial-region="today" data-tutorial-active={tutorialTarget === "today" ? "true" : undefined}><TodayView
+            jobs={jobs}
+            drafts={drafts}
+            routine={routine}
+            queue={isQueueCurrent(dailyQueue) ? dailyQueue : emptyDailyQueue()}
+            guidance={workflowGuidance}
+            scheduledCount={scheduledCount}
+            replyCount={mailboxEvents.filter((event) => event.state === "attention").length}
+            redirectCount={recoveryExceptions.filter((item) => !["resolved", "dismissed"].includes(item.state)).length}
+            dailySummaryEnabled={workflow.dailySummaryEnabled}
+            onContinue={navigateWorkflow}
+            onSaveQueue={saveSuggestedDailyQueue}
+            onResumeQueue={resumeDailyQueue}
+          /></div>}
+          {workspaceTab === "how" && <HowItWorks onNavigate={navigateWorkflow} onStartSyntheticDemo={() => void loadSampleRows()} onDemoStep={runSyntheticDemoStep} />}
+          {workspaceTab === "activity" && <div data-tutorial-region="activity" data-tutorial-active={tutorialTarget === "activity" ? "true" : undefined}><ActivityHome
+            preflight={preflight}
+            report={report}
+            mailboxEvents={mailboxEvents}
+            recoveryExceptions={recoveryExceptions}
+            overdueCount={routine.overdue.length}
+            dueTodayCount={routine.dueToday.length}
+            onFindContacts={(jobId) => { const job = jobs.find((item) => item.id === jobId); if (job) void findContactsForJob(job); }}
+            onEnterContacts={setManualContactJobId}
+            onRemoveFromBatch={removeFromBatch}
+            onRefresh={() => { if (storage.mode !== "browser") void refreshBackendData(); }}
+            connectedActivity={storage.mode !== "browser"}
+            onOpenAdvanced={(tab) => { setWorkflow((previous) => ({ ...previous, interfaceMode: "advanced" })); setRightTab(tab); }}
+          /></div>}
+          {workspaceTab === "settings" && <div data-tutorial-region="settings" data-tutorial-active={tutorialTarget === "settings" ? "true" : undefined}><SettingsHome
+            workflow={workflow}
+            storage={storage}
+            onboarding={onboarding}
+            systemState={systemState}
+            providers={setupStatus?.providers ?? []}
+            updateStatus={updateStatus}
+            onWorkflow={setWorkflow}
+            onSetup={() => openOnboarding(0)}
+            onProfiles={() => { setWorkflow((previous) => ({ ...previous, interfaceMode: "advanced" })); setWorkspaceTab("profiles"); }}
+            onCustomize={() => { setWorkflow((previous) => ({ ...previous, interfaceMode: "advanced" })); setWorkspaceTab("customize"); }}
+            onSource={() => { setWorkflow((previous) => ({ ...previous, interfaceMode: "advanced" })); setWorkspaceTab("source"); }}
+            onHow={() => setWorkspaceTab("how")}
+            onTroubleshooting={() => { setWorkflow((previous) => ({ ...previous, interfaceMode: "advanced" })); setRightTab("debug"); setWorkspaceTab("jobs"); }}
+            onFreshStart={() => setShowFreshStart(true)}
+            onCheckUpdates={() => void runUpdateCheck()}
+            onInstallUpdate={() => void runUpdateInstall()}
+          /></div>}
           <div hidden={workspaceTab !== "jobs"} data-tutorial-region="jobs" data-tutorial-active={tutorialTarget === "jobs" ? "true" : undefined}>
+          {workflow.interfaceMode === "simple" && <SimpleBatchControls
+            profile={profile}
+            profiles={profiles}
+            scheduledAt={scheduledAt}
+            spacingSeconds={spacingSeconds}
+            contactTarget={contactTarget}
+            runMode={runMode}
+            browserOnly={storage.mode === "browser"}
+            actionLabel={runActionLabel}
+            running={isRunning}
+            onProfile={setProfile}
+            onScheduledAt={setScheduledAt}
+            onSpacing={setSpacingSeconds}
+            onContactTarget={setContactTarget}
+            onRunMode={setRunMode}
+            onRun={armOrRun}
+          />}
           <div className="metrics-grid">
             <Metric label="Profile" value={profileLabel(profile, profiles)} />
             <Metric label="Rows" value={stats.total.toString()} />
@@ -1401,7 +1676,8 @@ export function App() {
             <Metric label="Selected" value={selectedJobs.length.toString()} />
           </div>
 
-          <div className="instructions-panel">
+          <details className="instructions-panel" open={workflow.interfaceMode === "advanced" ? true : undefined}>
+            <summary>Message and targeting instructions</summary>
             <label>
               <span>Batch email template</span>
               <textarea
@@ -1426,13 +1702,14 @@ export function App() {
                 onChange={(event) => setInstructions({ ...instructions, aiInstructions: event.target.value })}
               />
             </label>
-          </div>
+          </details>
 
           <OperationalPanel
             preflight={preflight}
             settings={batchSettings}
             onExportPayload={() => downloadJson("outreach-run-plan.json", buildBackendPayload(jobs, batchSettings))}
             onSelectReady={selectReadyOnly}
+            showTechnical={workflow.interfaceMode === "advanced"}
           />
 
           <div className="toolbar">
@@ -1495,13 +1772,14 @@ export function App() {
               activeProfile={profile}
               contactTarget={contactTarget}
               preferences={writing}
-              onPreferences={(value) => setWriting(normalizeWritingPreferences(value))}
+              controlMode={aiConnection.controlMode}
+              onPreferences={(value) => setWriting(enforceWritingOwnership(normalizeWritingPreferences(value), aiConnection.controlMode))}
               onDrafts={setDrafts}
               onGenerate={generateDraftMessages}
             /></div>
           )}
           {workspaceTab === "source" && (
-            <div data-tutorial-region="source" data-tutorial-active={tutorialTarget === "source" ? "true" : undefined}><SourceWorkspace
+            <div><SourceWorkspace
               source={sourceState}
               rows={jobs.length}
               warnings={importMeta.warnings}
@@ -1522,7 +1800,7 @@ export function App() {
               onAddApplication={() => setShowApplicationEntry(true)}
             /></div>
           )}
-          {workspaceTab === "calendar" && <CalendarWorkspace jobs={jobs} preferences={calendarPreferences} onPreferences={setCalendarPreferences} tutorialActive={tutorialTarget === "calendar"} />}
+          {workspaceTab === "calendar" && <CalendarWorkspace jobs={jobs} preferences={calendarPreferences} onPreferences={setCalendarPreferences} tutorialActive={false} />}
           {workspaceTab === "profiles" && (
             <ProfileManager
               profiles={profiles}
@@ -1539,7 +1817,7 @@ export function App() {
             />
           )}
           {workspaceTab === "customize" && (
-            <div data-tutorial-region="customize" data-tutorial-active={tutorialTarget === "customize" ? "true" : undefined}><CustomizationView
+            <div><CustomizationView
               value={workflow}
               onChange={(value) => setWorkflow(normalizeWorkflowPreferences(value))}
               onReset={resetCustomization}
@@ -1556,7 +1834,7 @@ export function App() {
           resizePanel("right", event.key === "ArrowLeft" ? 10 : -10);
         }}><GripVertical size={16} /></div>
 
-        <aside className="report-panel" data-tutorial-region={tutorialTarget === "mailbox" ? "mailbox" : "right"} data-tutorial-active={tutorialTarget === "right" || tutorialTarget === "mailbox" ? "true" : undefined}>
+        <aside className="report-panel">
           <div className="right-tabs">
             <button className={rightTab === "report" ? "active" : ""} onClick={() => setRightTab("report")}>
               <Send size={15} />
@@ -1572,12 +1850,12 @@ export function App() {
             </button>}
             {workflow.modules.recovery && <button className={rightTab === "recovery" ? "active" : ""} onClick={() => { setRightTab("recovery"); void refreshBackendData(); }}>
               <ShieldAlert size={15} />
-              Recovery
+              Problems
             </button>}
             <button className={rightTab === "setup" ? "active" : ""} onClick={() => { setRightTab("setup"); void runHealthCheck(); void refreshBackendData(); }}><Settings size={15} />Setup</button>
             {workflow.modules.debug && <button className={rightTab === "debug" ? "active" : ""} onClick={() => setRightTab("debug")}>
               <Bug size={15} />
-              Debug
+              Troubleshooting
             </button>}
           </div>
           {(workflow.modules.crm || workflow.modules.statistics) && <details className="advanced-tools" open={rightTab === "crm" || rightTab === "stats"}>
@@ -1602,7 +1880,7 @@ export function App() {
           ) : rightTab === "queue" ? (
             <>
               <PanelTitle icon={<Check size={16} />} label="Queue Review" />
-              <QueueView preflight={preflight} />
+              <QueueView preflight={preflight} onFindContacts={(jobId) => { const job = jobs.find((item) => item.id === jobId); if (job) void findContactsForJob(job); }} onEnterContacts={setManualContactJobId} onRemoveFromBatch={removeFromBatch} />
             </>
           ) : rightTab === "crm" ? (
             <>
@@ -1625,17 +1903,17 @@ export function App() {
             </>
           ) : rightTab === "recovery" ? (
             <>
-              <PanelTitle icon={<ShieldAlert size={16} />} label="Recovery Center" />
+              <PanelTitle icon={<ShieldAlert size={16} />} label="Problems and Redirects" />
               <BackendRefresh error={backendDataError} onRefresh={() => void refreshBackendData()} />
               <RecoveryView exceptions={recoveryExceptions} onResolve={(id, resolution) => void resolveException(id, resolution)} />
             </>
           ) : rightTab === "stats" ? (
             <><PanelTitle icon={<ChartNoAxesCombined size={16} />} label="Status & Activity" /><StatsView dashboard={dashboard} /></>
           ) : rightTab === "setup" ? (
-            <><PanelTitle icon={<Settings size={16} />} label="Setup" /><SetupView status={setupStatus} health={backendHealth} backendUrl={backendUrl} profiles={profiles} aiConnection={aiConnection} aiConnectionCheck={aiConnectionCheck} integrations={integrations} storage={storage} storageStatus={externalStorageStatus} onStorageChange={setStorage} onStorageTest={() => void testExternalStorage()} onStoragePull={() => void pullExternalWorkspace()} onStoragePush={() => void pushExternalWorkspace()} onAiChange={setAiConnection} onAiCheck={() => void runAiConnectionCheck()} onOpenOnboarding={() => openOnboarding(0)} onStartFresh={() => setShowFreshStart(true)} onCheck={() => { void runHealthCheck(); void refreshBackendData(); if (aiConnection.controlMode === "in_app") void runAiConnectionCheck(); }} onExportIncident={() => void downloadIncidentReport(backendUrl)} /></>
+            <><PanelTitle icon={<Settings size={16} />} label="Setup" /><SetupView status={setupStatus} health={backendHealth} backendUrl={backendUrl} profiles={profiles} aiConnection={aiConnection} aiConnectionCheck={aiConnectionCheck} integrations={integrations} storage={storage} storageStatus={externalStorageStatus} onStorageChange={setStorage} onStorageTest={() => void testExternalStorage()} onStoragePull={() => void pullExternalWorkspace()} onStoragePush={() => void pushExternalWorkspace()} onAiChange={updateAiOwnership} onAiCheck={() => void runAiConnectionCheck()} onOpenOnboarding={() => openOnboarding(0)} onStartFresh={() => setShowFreshStart(true)} onCheck={() => { void runHealthCheck(); void refreshBackendData(); if (aiConnection.controlMode === "in_app") void runAiConnectionCheck(); }} onExportIncident={() => void downloadIncidentReport(backendUrl)} /></>
           ) : (
             <>
-              <PanelTitle icon={<Bug size={16} />} label="Potential Issues" />
+              <PanelTitle icon={<Bug size={16} />} label="Troubleshooting" />
               <DebugView
                 issues={issues}
                 jobs={jobs}
@@ -1711,11 +1989,62 @@ export function App() {
         </div>
       )}
       {showFreshStart && <FreshStartModal backendUrl={backendUrl} browserCounts={{ jobs: jobs.length, drafts: drafts.length, summaries: reportHistory.length, profiles: profiles.length }} onClose={() => setShowFreshStart(false)} onComplete={startFresh} />}
-      {showOnboarding && <OnboardingWizard initialStep={onboardingEntryStep} initialSettings={integrations} profiles={profiles} aiConnection={aiConnection} aiConnectionCheck={aiConnectionCheck} backendUrl={backendUrl} storage={storage} onStorageChange={setStorage} onAiChange={setAiConnection} onAiCheck={() => void runAiConnectionCheck()} onBackendUrlChange={setBackendUrl} onManageProfiles={manageProfilesFromOnboarding} onClose={closeOnboarding} onComplete={completeOnboarding} />}
+      {showOnboarding && <OnboardingWizard initialStep={onboardingEntryStep} initialSettings={integrations} profiles={profiles} aiConnection={aiConnection} aiConnectionCheck={aiConnectionCheck} backendUrl={backendUrl} storage={storage} onStorageChange={setStorage} onAiChange={updateAiOwnership} onAiCheck={() => void runAiConnectionCheck()} onBackendUrlChange={setBackendUrl} onManageProfiles={manageProfilesFromOnboarding} onClose={closeOnboarding} onComplete={completeOnboarding} />}
       {showApplicationEntry && <ApplicationEntryModal profiles={profiles} activeProfile={profile} onClose={() => setShowApplicationEntry(false)} onSave={addApplication} />}
+      {manualContactJobId && jobs.find((item) => item.id === manualContactJobId) && <ManualContactModal job={jobs.find((item) => item.id === manualContactJobId)!} onClose={() => setManualContactJobId("")} onSave={(value) => { const job = jobs.find((item) => item.id === manualContactJobId); if (job) saveManualContact(job, value); }} />}
       {showTutorial && !showOnboarding && <WorkspaceTutorial initialStep={tutorial.lastStep} onNavigate={navigateTutorial} onProgress={recordTutorialStep} onClose={() => { setShowTutorial(false); setTutorialTarget(""); }} onSkip={skipTutorial} onComplete={completeTutorial} />}
     </main>
   );
+}
+
+function SimpleBatchControls({ profile, profiles, scheduledAt, spacingSeconds, contactTarget, runMode, browserOnly, actionLabel, running, onProfile, onScheduledAt, onSpacing, onContactTarget, onRunMode, onRun }: {
+  profile: ProfileKey; profiles: ProfileDefinition[]; scheduledAt: string; spacingSeconds: number; contactTarget: number; runMode: RunMode; browserOnly: boolean; actionLabel: string; running: boolean;
+  onProfile: (value: string) => void; onScheduledAt: (value: string) => void; onSpacing: (value: number) => void; onContactTarget: (value: number) => void; onRunMode: (value: RunMode) => void; onRun: () => void;
+}) {
+  return <section className="simple-batch-controls">
+    <header><div><span className="eyebrow">Current batch</span><h2>Choose, check, and schedule</h2></div><button className="continue-button" disabled={running} onClick={onRun}><Play size={16} /> {actionLabel}</button></header>
+    <div className="simple-control-grid">
+      <label>Profile<select value={profile} onChange={(event) => onProfile(event.target.value)}>{profiles.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
+      <label>Start time<input type="datetime-local" value={scheduledAt} onChange={(event) => onScheduledAt(event.target.value)} /></label>
+      <label>People per company<input type="number" min="1" max="12" value={contactTarget} onChange={(event) => onContactTarget(Number(event.target.value))} /></label>
+      <label>Seconds between messages<input type="number" min="15" max="3600" value={spacingSeconds} onChange={(event) => onSpacing(Number(event.target.value))} /></label>
+      <label>Run choice<select value={runMode} onChange={(event) => onRunMode(event.target.value as RunMode)}><option value="dry_run">Run a dry check</option><option value="backend" disabled={browserOnly}>Use connected services</option></select>{browserOnly && <small>Connect the local service in Settings to enable provider automation.</small>}</label>
+    </div>
+  </section>;
+}
+
+function ActivityHome({ preflight, report, mailboxEvents, recoveryExceptions, overdueCount, dueTodayCount, onFindContacts, onEnterContacts, onRemoveFromBatch, onRefresh, connectedActivity, onOpenAdvanced }: {
+  preflight: PreflightResult; report: BatchReport | null; mailboxEvents: MailboxEvent[]; recoveryExceptions: RecoveryException[]; overdueCount: number; dueTodayCount: number;
+  onFindContacts: (jobId: string) => void; onEnterContacts: (jobId: string) => void; onRemoveFromBatch: (jobId: string) => void; onRefresh: () => void; connectedActivity: boolean; onOpenAdvanced: (tab: "report" | "mailbox" | "recovery" | "stats") => void;
+}) {
+  const openProblems = recoveryExceptions.filter((item) => !["resolved", "dismissed"].includes(item.state));
+  return <section className="activity-home">
+    <header className="studio-heading"><div><span className="eyebrow">Work history and exceptions</span><h1>Activity</h1><p>Review what is blocked, what ran, and which responses need attention.</p></div><button className="small-button" disabled={!connectedActivity} onClick={onRefresh}><RefreshCw size={15} /> {connectedActivity ? "Refresh connected activity" : "No mailbox connected"}</button></header>
+    <div className="activity-metrics"><button onClick={() => onOpenAdvanced("report")}><strong>{report?.prepared ?? 0}</strong><span>Prepared in last run</span></button><button onClick={() => onOpenAdvanced("mailbox")}><strong>{mailboxEvents.length}</strong><span>Replies requiring attention</span></button><button onClick={() => onOpenAdvanced("recovery")}><strong>{openProblems.length}</strong><span>Problems and redirects</span></button><button onClick={() => onOpenAdvanced("stats")}><strong>{overdueCount + dueTodayCount}</strong><span>Follow-ups due</span></button></div>
+    <section className="activity-section"><header><div><span className="eyebrow">Current batch</span><h2>Blocked work and corrective actions</h2></div><span>{preflight.blockedCount} blocked</span></header><QueueView preflight={preflight} onFindContacts={onFindContacts} onEnterContacts={onEnterContacts} onRemoveFromBatch={onRemoveFromBatch} /></section>
+    <div className="activity-columns"><section><header><h2>Recent replies</h2><button onClick={() => onOpenAdvanced("mailbox")}>Open details</button></header>{mailboxEvents.length ? mailboxEvents.slice(0, 5).map((event) => <article key={event.id}><strong>{event.company_name || event.sender_name || event.sender_email}</strong><span>{event.subject}</span><small>{event.classification.replaceAll("_", " ")}</small></article>) : <p>No connected replies require attention.</p>}</section><section><header><h2>Problems and redirects</h2><button onClick={() => onOpenAdvanced("recovery")}>Open details</button></header>{openProblems.length ? openProblems.slice(0, 5).map((item) => <article key={item.id}><strong>{item.company_name}</strong><span>{item.proposedAction.note || item.type.replaceAll("_", " ")}</span><small>{item.severity}</small></article>) : <p>No open recovery items.</p>}</section></div>
+  </section>;
+}
+
+function SettingsHome({ workflow, storage, onboarding, systemState, providers, updateStatus, onWorkflow, onSetup, onProfiles, onCustomize, onSource, onHow, onTroubleshooting, onFreshStart, onCheckUpdates, onInstallUpdate }: {
+  workflow: WorkflowPreferences; storage: StorageSettings; onboarding: OnboardingState; systemState: { state: string; label: string }; providers: NonNullable<SetupStatus["providers"]>; updateStatus: ReleaseUpdateStatus;
+  onWorkflow: (value: WorkflowPreferences) => void; onSetup: () => void; onProfiles: () => void; onCustomize: () => void; onSource: () => void; onHow: () => void; onTroubleshooting: () => void; onFreshStart: () => void; onCheckUpdates: () => void; onInstallUpdate: () => void;
+}) {
+  return <section className="settings-home">
+    <header className="studio-heading"><div><span className="eyebrow">Workspace controls</span><h1>Settings</h1><p>Start with setup. Open technical controls only when you need to change or troubleshoot them.</p></div><button className="continue-button" onClick={onSetup}><Settings size={16} /> Open setup wizard</button></header>
+    <section className={`readiness-summary ${systemState.state}`}><Radio size={18} /><div><strong>{systemState.label}</strong><span>{storage.mode === "browser" ? "Local imports, templates, queues, and dry checks are available. Contact discovery, email automation, reply monitoring, and automated recovery are off." : "Only providers whose exact tests passed can run. A selected but untested provider is not treated as ready."}</span></div></section>
+    <div className="settings-grid">
+      <button onClick={onHow}><Workflow size={18} /><span><strong>How it works</strong><small>Overview, guided synthetic run, reference, and terminology.</small></span></button>
+      <button onClick={onProfiles}><Users size={18} /><span><strong>Profiles and resumes</strong><small>Add or edit sender identities, role tracks, and resume routing.</small></span></button>
+      <button onClick={onSource}><FolderSync size={18} /><span><strong>Application files</strong><small>Connect, synchronize, import, export, or add applications manually.</small></span></button>
+      <button onClick={onCustomize}><SlidersHorizontal size={18} /><span><strong>Customize behavior</strong><small>Change interface, routine, review, credit, module, and visual preferences.</small></span></button>
+      <button onClick={onTroubleshooting}><Bug size={18} /><span><strong>Troubleshooting</strong><small>Inspect blockers, service health, and technical details.</small></span></button>
+      <button onClick={onFreshStart}><RotateCcw size={18} /><span><strong>Start fresh</strong><small>Back up and reset console state without deleting connected files or credentials.</small></span></button>
+    </div>
+    <section className="settings-preferences"><label className="toggle-row"><input type="checkbox" checked={workflow.dailySummaryEnabled} onChange={(event) => onWorkflow({ ...workflow, dailySummaryEnabled: event.target.checked })} /><span><strong>Daily summary on Today</strong><small>Shows due work and your saved queue. This does not create an operating-system notification.</small></span></label><label className="toggle-row"><input type="checkbox" checked={workflow.showProcessRail} onChange={(event) => onWorkflow({ ...workflow, showProcessRail: event.target.checked })} /><span><strong>Persistent process rail</strong><small>Shows Applications through Responses on every main screen.</small></span></label><label className="toggle-row"><input type="checkbox" checked={workflow.showGuidancePanel} onChange={(event) => onWorkflow({ ...workflow, showGuidancePanel: event.target.checked })} /><span><strong>Next-step explanations</strong><small>Answers where you are, what is next, what clicks do, and why work is blocked.</small></span></label></section>
+    <section className="provider-readiness"><header><h2>Connected service readiness</h2><span>{onboarding.completed ? "Setup saved" : "Setup incomplete"}</span></header>{storage.mode === "browser" ? <p>No local providers are active. Contact entry and email handling are manual.</p> : providers.length ? providers.map((provider) => <div key={provider.role}><span><strong>{provider.label}</strong><small>{provider.detail}</small></span><em className={provider.status === "configured" ? "ready" : "setup"}>{provider.status}</em></div>) : <p>Run setup verification to test each selected provider.</p>}</section>
+    <section className={`update-center ${updateStatus.state}`}><header><div><span className="eyebrow">Release maintenance</span><h2>Automatic updates</h2></div><span>v{updateStatus.currentVersion || APP_VERSION}</span></header><p>{updateStatus.detail}</p><div className="update-actions"><button className="small-button" disabled={updateStatus.state === "unsupported" || ["checking", "downloading", "restarting"].includes(updateStatus.state)} onClick={onCheckUpdates}><RefreshCw size={15} /> {updateStatus.state === "checking" ? "Checking..." : updateStatus.state === "unsupported" ? "Unavailable in this build" : "Check for updates"}</button>{updateStatus.canInstall && <button className="continue-button" disabled={updateStatus.state === "downloading" || updateStatus.state === "restarting"} onClick={onInstallUpdate}><ArrowDownToLine size={15} /> Install {updateStatus.latestVersion} and restart</button>}{updateStatus.releaseUrl && <a href={updateStatus.releaseUrl} target="_blank" rel="noreferrer">Release notes</a>}</div><small>The Lite updater accepts only this project's official GitHub release bundle, verifies hashes before replacing managed files, backs up the current app, and preserves local data, provider credentials, resumes, and linked files.</small></section>
+  </section>;
 }
 
 function FreshStartModal({ backendUrl, browserCounts, onClose, onComplete }: {
@@ -2014,10 +2343,12 @@ function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection
   const activeAiRecipe = aiConnectionRecipes[aiConnection.mode];
   const activeAiCheck = aiConnectionCheck?.mode === aiConnection.mode ? aiConnectionCheck : null;
   const aiLoginLabel = activeAiCheck?.status === "ready" ? "Verified" : activeAiCheck?.status === "checking" ? "Checking" : activeAiCheck ? "Needs attention" : "Not tested";
+  const browserOnly = storage.mode === "browser";
+  const cannotContinue = step === 1 && browserOnly && aiConnection.controlMode === "in_app";
   const moveToStep = (nextStep: number) => { setError(""); setStep(Math.min(4, Math.max(0, nextStep))); };
   async function finish() {
     setSaving(true); setError("");
-    try { await onComplete(settings); }
+    try { await onComplete(browserOnly ? defaultIntegrationSettings : settings); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Setup could not be saved."); setSaving(false); }
   }
   async function testBackend() {
@@ -2046,7 +2377,7 @@ function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection
     <div className="modal-backdrop onboarding-backdrop" role="presentation">
       <section className="onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
         <header><div><span className="eyebrow">Initial setup</span><h2 id="onboarding-title">Configure Outreach Console</h2></div><button className="icon-button" title="Save progress and close" onClick={() => onClose(step, doNotPrompt, settings)}><X size={18} /></button></header>
-        <nav className="onboarding-progress" aria-label="Setup progress">{["Foundation", "Providers", "Connections", "Storage", "Review"].map((label, index) => <button key={label} className={index === step ? "active" : index < step ? "done" : ""} onClick={() => moveToStep(index)}><span>{index < step ? <Check size={13} /> : index + 1}</span>{label}</button>)}</nav>
+        <nav className="onboarding-progress" aria-label="Setup progress">{["Foundation", "Storage", "Providers", "Connections", "Review"].map((label, index) => <button key={label} className={index === step ? "active" : index < step ? "done" : ""} onClick={() => moveToStep(index)}><span>{index < step ? <Check size={13} /> : index + 1}</span>{label}</button>)}</nav>
         <div className="onboarding-content">
           {step === 0 && <section className="foundation-step">
             <div><h3>How will AI operate this workflow?</h3><p>This choice decides where provider connections live and which checks the console can perform.</p></div>
@@ -2060,12 +2391,12 @@ function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection
             {aiConnection.controlMode === "templates_only" && <div className="ownership-note"><strong>No AI connection required</strong><span>Contact providers and mailbox adapters can still run locally, but personalized writing remains template-driven.</span></div>}
             <div className="foundation-grid">
               <section className="foundation-card"><header><div><span className="eyebrow">Identity and routing</span><h4>Profiles</h4></div><button className="small-button compact" onClick={() => onManageProfiles(step, doNotPrompt, settings)}><Settings size={14} /> Manage</button></header><div className="foundation-profiles">{profiles.length ? profiles.map((item) => <button key={item.key} onClick={() => onManageProfiles(step, doNotPrompt, settings)}><strong>{item.label}</strong><small>{item.senderEmail || item.senderName || "Sender not configured"}</small><span>{item.resumeLabel || "Resume not configured"}</span></button>) : <button onClick={() => onManageProfiles(step, doNotPrompt, settings)}><strong>Add a profile</strong><small>A sender and resume are required for local operation.</small></button>}</div></section>
-              <section className="foundation-card"><header><div><span className="eyebrow">Local service</span><h4>Backend address</h4></div>{foundationHealth && <StatusPill state={foundationHealth.status === "ok" ? "ready" : "error"} label={foundationHealth.status} />}</header><p>The uncommon default port reduces collisions. Change it only when the backend was started on a different local port.</p><label>Local URL<input aria-label="Initial backend URL" value={backendUrl} onChange={(event) => { onBackendUrlChange(event.target.value); setFoundationHealth(null); }} /></label><div className="foundation-actions"><button className="ghost-button" onClick={() => onBackendUrlChange(DEFAULT_BACKEND_URL)}>Use default</button><button className="small-button" disabled={testingBackend} onClick={() => void testBackend()}><RefreshCw size={14} /> {testingBackend ? "Testing..." : "Test local service"}</button></div>{foundationHealth && <small>{foundationHealth.message}</small>}</section>
+              <section className="foundation-card"><header><div><span className="eyebrow">What this choice controls</span><h4>{controlModeLabel(aiConnection.controlMode)}</h4></div></header><p>{aiConnection.controlMode === "templates_only" ? "The console prepares template-based messages and never calls an AI." : aiConnection.controlMode === "external_operator" ? "Your outside AI owns its logins and provider connections. The console will not duplicate those calls." : "The local console calls only the AI connection you configure and verify."}</p><small>You can change this later. The next screen decides whether the workspace is browser-only or uses the lightweight local service.</small></section>
             </div>
           </section>}
-          {step === 1 && <section className="provider-step"><h3>Choose operational providers</h3><p>A provider can be owned by the outside AI or by this console. The next step gives the correct connection path for the AI mode selected on Foundation.</p><ProviderSelect label="Primary contact discovery" selection={settings.primaryEnrichment} options={enrichmentOptions} onChange={(value) => setSettings({ ...settings, primaryEnrichment: value })} /><label className="toggle-row"><input type="checkbox" checked={settings.fallbackEnrichment.enabled} onChange={(event) => setSettings({ ...settings, fallbackEnrichment: event.target.checked ? { ...settings.fallbackEnrichment, enabled: true, providerId: settings.fallbackEnrichment.providerId === "none" ? "skrapp" : settings.fallbackEnrichment.providerId, label: settings.fallbackEnrichment.providerId === "none" ? "Skrapp" : settings.fallbackEnrichment.label } : { ...selectIntegration("none", enrichmentOptions), enabled: false } })} /><span><strong>Use a fallback contact provider</strong><small>Disable this if one provider or manual research is enough.</small></span></label>{settings.fallbackEnrichment.enabled && <ProviderSelect label="Fallback contact discovery" selection={settings.fallbackEnrichment} options={enrichmentOptions.filter((item) => item.id !== "none")} onChange={(value) => setSettings({ ...settings, fallbackEnrichment: value })} />}<ProviderSelect label="Email, drafts, and replies" selection={settings.mailbox} options={mailboxOptions} onChange={(value) => setSettings({ ...settings, mailbox: value })} /></section>}
-          {step === 2 && <section className="connection-step"><h3>{aiConnection.controlMode === "external_operator" ? "Connect providers to the outside AI" : "Connect providers to the local console"}</h3><p>{aiConnection.controlMode === "external_operator" ? "Use existing connectors or official MCP servers in the AI environment. Installing duplicate adapters inside this console is optional." : "Included adapters remain lightweight. Other providers require a small local adapter that follows the documented contract."}</p><div className="connection-list">{connections.map((item) => <ConnectionCard key={item.role} role={item.role} selection={item.selection} options={item.options} controlMode={aiConnection.controlMode} copied={copiedProvider === item.selection.providerId} onChange={item.update} onCopy={(option) => void copyAdapterPrompt(option, item.role)} />)}</div>{error && <div className="wizard-error"><AlertTriangle size={15} />{error}</div>}<div className="connection-value"><span>Local service</span><code>{backendUrl || "Not configured"}</code></div></section>}
-          {step === 3 && <><StorageSetup value={storage} onChange={onStorageChange} />{aiConnection.controlMode === "in_app" && storage.mode === "browser" && <div className="wizard-error"><AlertTriangle size={15} />Console-managed AI needs the lightweight local service. Choose Embedded SQLite, or switch Foundation to Outside AI or Templates only.</div>}</>}
+          {step === 1 && <><StorageSetup value={storage} onChange={onStorageChange} />{aiConnection.controlMode === "in_app" && browserOnly && <div className="wizard-error"><AlertTriangle size={15} />The console cannot call an AI from browser-only mode. Choose Embedded SQLite, or return to Foundation and select Outside AI or Templates only.</div>}</>}
+          {step === 2 && (browserOnly ? <section className="provider-step manual-provider-step"><h3>Provider work will be manual</h3><p>Browser-only mode does not call contact or email services. Enter contacts yourself, prepare template or manual messages, send from your email app, and record replies in Activity.</p><div className="ownership-note"><strong>No provider setup required</strong><span>If you later choose Embedded SQLite, return here to select and test contact discovery, email, and reply-monitoring services.</span></div></section> : <section className="provider-step"><h3>Choose operational providers</h3><p>Select only services you intend to connect. No provider means that step stays manual, without an adapter warning.</p><ProviderSelect label="Primary contact discovery" selection={settings.primaryEnrichment} options={enrichmentOptions} onChange={(value) => setSettings({ ...settings, primaryEnrichment: value })} /><label className="toggle-row"><input type="checkbox" checked={settings.fallbackEnrichment.enabled} onChange={(event) => setSettings({ ...settings, fallbackEnrichment: event.target.checked ? { ...settings.fallbackEnrichment, enabled: true, providerId: settings.fallbackEnrichment.providerId === "none" ? "skrapp" : settings.fallbackEnrichment.providerId, label: settings.fallbackEnrichment.providerId === "none" ? "Skrapp" : settings.fallbackEnrichment.label } : { ...selectIntegration("none", enrichmentOptions), enabled: false } })} /><span><strong>Use a fallback contact provider</strong><small>Disable this if one provider or manual research is enough.</small></span></label>{settings.fallbackEnrichment.enabled && <ProviderSelect label="Fallback contact discovery" selection={settings.fallbackEnrichment} options={enrichmentOptions.filter((item) => item.id !== "none")} onChange={(value) => setSettings({ ...settings, fallbackEnrichment: value })} />}<ProviderSelect label="Email, drafts, and replies" selection={settings.mailbox} options={mailboxOptions} onChange={(value) => setSettings({ ...settings, mailbox: value })} /></section>)}
+          {step === 3 && (browserOnly ? <section className="connection-step"><h3>No local connections to test</h3><p>This browser workspace is ready for imports, templates, manual writing, queues, and dry checks. Contact discovery, email sending, reply monitoring, and automatic recovery remain manual.</p></section> : <section className="connection-step"><h3>{aiConnection.controlMode === "external_operator" ? "Connect providers to the outside AI" : "Connect providers to the local console"}</h3><p>{aiConnection.controlMode === "external_operator" ? "Use existing connectors or official MCP servers in the AI environment. Installing duplicate adapters inside this console is optional." : "Included adapters remain lightweight. Other providers require a small local adapter that follows the documented contract."}</p><div className="connection-list">{connections.map((item) => <ConnectionCard key={item.role} role={item.role} selection={item.selection} options={item.options} controlMode={aiConnection.controlMode} copied={copiedProvider === item.selection.providerId} onChange={item.update} onCopy={(option) => void copyAdapterPrompt(option, item.role)} />)}</div>{error && <div className="wizard-error"><AlertTriangle size={15} />{error}</div>}<details className="connection-value"><summary>Advanced local service address</summary><label>Local URL<input aria-label="Initial backend URL" value={backendUrl} onChange={(event) => { onBackendUrlChange(event.target.value); setFoundationHealth(null); }} /></label><div className="foundation-actions"><button className="ghost-button" onClick={() => onBackendUrlChange(DEFAULT_BACKEND_URL)}>Use default</button><button className="small-button" disabled={testingBackend} onClick={() => void testBackend()}><RefreshCw size={14} /> {testingBackend ? "Testing..." : "Test local service"}</button></div>{foundationHealth && <small>{foundationHealth.message}</small>}</details></section>)}
           {step === 4 && <section className="review-step">
             <h3>Review and verify setup</h3>
             <div className="review-grid">
@@ -2074,16 +2405,16 @@ function OnboardingWizard({ initialStep, initialSettings, profiles, aiConnection
               <span>Profiles<strong>{profiles.length || "None"}</strong></span>
               <span>Storage<strong>{storage.mode === "browser" ? "Browser only" : storage.mode === "sqlite" ? "Embedded SQLite" : `Existing ${storage.externalDialect}`}</strong></span>
               <span>Local service<strong>{storage.mode === "browser" ? aiConnection.controlMode === "in_app" ? "Required; choose SQLite" : "Optional" : backendUrl}</strong></span>
-              <span>Primary contact discovery<strong>{settings.primaryEnrichment.label}</strong></span>
-              <span>Fallback<strong>{settings.fallbackEnrichment.enabled ? settings.fallbackEnrichment.label : "Disabled"}</strong></span>
-              <span>Email service<strong>{settings.mailbox.label}</strong></span>
+              <span>Primary contact discovery<strong>{browserOnly ? "Manual contact entry" : settings.primaryEnrichment.label}</strong></span>
+              <span>Fallback<strong>{browserOnly ? "Not used" : settings.fallbackEnrichment.enabled ? settings.fallbackEnrichment.label : "Disabled"}</strong></span>
+              <span>Email service<strong>{browserOnly ? "Manual email handling" : settings.mailbox.label}</strong></span>
             </div>
             {aiConnection.controlMode === "in_app" && <div className={`review-ai-check ${activeAiCheck?.status === "ready" ? "ready" : activeAiCheck ? "error" : ""}`}><div><strong>{aiLoginLabel}</strong><span>{activeAiCheck?.detail ?? "Verify the selected plan login before finishing setup."}</span></div><button type="button" className="small-button" disabled={activeAiCheck?.status === "checking"} onClick={onAiCheck}><RefreshCw size={14} />{activeAiCheck?.status === "checking" ? "Checking..." : "Verify plan login"}</button></div>}
             <div className="inline-note"><ShieldAlert size={15} /> {aiConnection.controlMode === "in_app" && storage.mode === "browser" ? "Console-managed AI needs the lightweight local service. Go back to Storage and choose Embedded SQLite before finishing." : storage.mode === "browser" ? "Browser-only mode can finish without a local service. Provider actions, CRM, mailbox ingestion, and recovery automation stay off." : aiConnection.controlMode === "external_operator" ? "The console verifies its local service; your outside AI is responsible for verifying its own provider connectors." : "Setup will remain incomplete until the plan login, billing guard, local adapters, sender routing, and resumes pass."}</div>
             {error && <div className="wizard-error"><AlertTriangle size={15} />{error}</div>}
           </section>}
         </div>
-        <footer><label className="do-not-prompt"><input type="checkbox" checked={doNotPrompt} onChange={(event) => setDoNotPrompt(event.target.checked)} /> Do not open setup automatically again</label><div><button className="ghost-button" disabled={step === 0 || saving} onClick={() => moveToStep(step - 1)}>Back</button>{step < 4 ? <button className="launch-button" onClick={() => moveToStep(step + 1)}>Continue</button> : <button className="launch-button" disabled={saving || !profiles.length} onClick={() => void finish()}>{saving ? "Verifying..." : "Save and verify setup"}</button>}</div></footer>
+        <footer><label className="do-not-prompt"><input type="checkbox" checked={doNotPrompt} onChange={(event) => setDoNotPrompt(event.target.checked)} /> Do not open setup automatically again</label><div><button className="ghost-button" disabled={step === 0 || saving} onClick={() => moveToStep(step - 1)}>Back</button>{step < 4 ? <button className="launch-button" disabled={cannotContinue} onClick={() => moveToStep(step + 1)}>Continue</button> : <button className="launch-button" disabled={saving || !profiles.length} onClick={() => void finish()}>{saving ? "Verifying..." : "Save and verify setup"}</button>}</div></footer>
       </section>
     </div>
   );
@@ -2135,9 +2466,17 @@ function InlineAiConfiguration({ value, check, onChange, onCheck }: { value: AiC
 function ConnectionCard({ role, selection, options, controlMode, copied, onChange, onCopy }: { role: string; selection: IntegrationSettings["primaryEnrichment"]; options: IntegrationOption[]; controlMode: AiControlMode; copied: boolean; onChange: (value: IntegrationSettings["primaryEnrichment"]) => void; onCopy: (option: IntegrationOption) => void }) {
   const option = integrationOption(selection, options);
   const externallyManaged = controlMode === "external_operator";
-  const status = option.adapter === "built_in" ? "included" : option.adapter === "disabled" ? "disabled" : externallyManaged && option.mcpUrl ? "official MCP" : "guided install";
+  const status = option.adapter === "built_in" ? "included; test required" : option.adapter === "disabled" ? "disabled" : externallyManaged && option.mcpUrl ? "outside AI connection" : "guided install";
   const installPrompt = option.adapter === "external" ? buildAdapterPrompt(option, role) : "";
-  return <article><header><div><strong>{selection.label}</strong><small>{role}</small></div><StatusPill state={option.adapter === "built_in" ? "ready" : option.adapter === "disabled" ? "idle" : "setup"} label={status} /></header><p>{option.setup}</p>{selection.enabled && selection.credentialEnv && <label>Credential environment variable<input value={selection.credentialEnv} onChange={(event) => onChange({ ...selection, credentialEnv: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })} /></label>}{externallyManaged && option.mcpUrl && <div className="connection-value"><span>Official MCP</span><code>{option.mcpUrl}</code></div>}<div className="adapter-actions"><a className="small-button" href={option.docs} target="_blank" rel="noreferrer">Setup documentation</a>{option.adapter === "external" && <button className="ghost-button" onClick={() => onCopy(option)}>{copied ? "Prompt copied" : "Copy install prompt"}</button>}</div>{option.adapter === "external" && <details className="install-prompt"><summary>View install prompt</summary><textarea aria-label={`${selection.label} install prompt`} readOnly value={installPrompt} /></details>}<small>{option.adapter === "built_in" ? "The adapter code is included, but authorization is still required." : externallyManaged ? "Your outside AI owns this connection. Do not also configure local execution unless you intentionally want both paths." : "The console cannot use this provider until the local adapter passes its connection test."}</small></article>;
+  return <article>
+    <header><div><strong>{selection.label}</strong><small>{role}</small></div><StatusPill state={option.adapter === "disabled" ? "idle" : "setup"} label={status} /></header>
+    <p>{option.setup}</p>
+    {selection.enabled && selection.credentialEnv && <label>Credential environment variable<input value={selection.credentialEnv} onChange={(event) => onChange({ ...selection, credentialEnv: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })} /></label>}
+    {externallyManaged && option.mcpUrl && <div className="connection-value"><span>Official MCP</span><code>{option.mcpUrl}</code></div>}
+    {option.adapter !== "disabled" && <div className="adapter-actions"><a className="small-button" href={option.docs} target="_blank" rel="noreferrer">Setup documentation</a>{option.adapter === "external" && <button className="ghost-button" onClick={() => onCopy(option)}>{copied ? "Prompt copied" : "Copy install prompt"}</button>}</div>}
+    {option.adapter === "external" && <details className="install-prompt"><summary>View install prompt</summary><textarea aria-label={`${selection.label} install prompt`} readOnly value={installPrompt} /></details>}
+    <small>{option.adapter === "disabled" ? `No provider selected. ${role.includes("email") ? "Email handling" : "Contact entry"} will be manual.` : option.adapter === "built_in" ? "The adapter code is included, but this provider is not ready until its exact authorization test passes." : externallyManaged ? "Your outside AI owns this connection. Do not also configure local execution unless you intentionally want both paths." : "The console cannot use this provider until the local adapter passes its connection test."}</small>
+  </article>;
 }
 
 function controlModeLabel(mode: AiControlMode): string {
@@ -2491,17 +2830,19 @@ function OperationalPanel({
   settings,
   onExportPayload,
   onSelectReady,
+  showTechnical,
 }: {
   preflight: PreflightResult;
   settings: BatchSettings;
   onExportPayload: () => void;
   onSelectReady: () => void;
+  showTechnical: boolean;
 }) {
   return (
     <div className="ops-panel">
       <div className="ops-header">
-        <strong>Operational preflight</strong>
-        <span>{settings.mode === "backend" ? "backend" : "dry run"}</span>
+        <strong>Ready to run</strong>
+        <span>{settings.mode === "backend" ? "connected services" : "dry check"}</span>
       </div>
       <div className="ops-grid">
         <Metric label="Ready" value={preflight.readyCount.toString()} />
@@ -2518,7 +2859,7 @@ function OperationalPanel({
           <Check size={15} />
           Ready only
         </button>
-        <span>{settings.backendUrl || "No backend URL"}</span>
+        {showTechnical && <span>{settings.backendUrl || "No local service address"}</span>}
       </div>
       {preflight.warnings.length > 0 && (
         <div className="ops-warnings">
@@ -2531,7 +2872,7 @@ function OperationalPanel({
   );
 }
 
-function QueueView({ preflight }: { preflight: PreflightResult }) {
+function QueueView({ preflight, onFindContacts, onEnterContacts, onRemoveFromBatch }: { preflight: PreflightResult; onFindContacts: (jobId: string) => void; onEnterContacts: (jobId: string) => void; onRemoveFromBatch: (jobId: string) => void }) {
   if (!preflight.queue.length) return <div className="empty-report">No selected rows in queue.</div>;
   return (
     <div className="queue-list">
@@ -2553,6 +2894,10 @@ function QueueView({ preflight }: { preflight: PreflightResult }) {
               ))}
             </ul>
           )}
+          {item.status === "blocked" && <div className="queue-fixes">
+            {item.blockers.includes("no clean contacts") && <><button className="small-button" onClick={() => onFindContacts(item.id)}><Search size={14} /> Find contacts</button><button className="small-button" onClick={() => onEnterContacts(item.id)}><UserPlus size={14} /> Enter contact</button></>}
+            <button className="ghost-button" onClick={() => onRemoveFromBatch(item.id)}><X size={14} /> Remove from batch</button>
+          </div>}
         </article>
       ))}
     </div>
@@ -2717,6 +3062,35 @@ function rowState(job: JobRow, contactTarget: number): string {
   if (isRowRecent(job)) return "recent";
   if (job.status === "queued") return "queued";
   return "pending";
+}
+
+function describeRunAction(settings: BatchSettings, preflight: PreflightResult, draftCount: number, running: boolean): string {
+  if (running) return settings.mode === "dry_run" ? "Running dry check..." : "Starting connected workflow...";
+  if (!settings.selectedIds.length) return "Select applications to continue";
+  if (!preflight.readyCount) return "Fix blockers before running";
+  const decision = decideSchedule(settings.scheduledAt);
+  if (decision === "invalid") return "Choose a valid start time";
+  const count = draftCount || preflight.readyCount;
+  if (decision === "run_now") return settings.mode === "dry_run" ? `Run dry check now (${preflight.readyCount})` : `Prepare ${count} message${count === 1 ? "" : "s"} with connected services`;
+  const when = new Date(settings.scheduledAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return settings.mode === "dry_run" ? `Schedule dry check for ${when}` : `Schedule ${count} message${count === 1 ? "" : "s"} for ${when}`;
+}
+
+function defaultWritingMode(controlMode: AiControlMode): WritingPreferences["mode"] {
+  if (controlMode === "templates_only") return "template";
+  if (controlMode === "in_app") return "in_app_llm";
+  return "external_llm";
+}
+
+function writingModeAllowed(mode: WritingPreferences["mode"], controlMode: AiControlMode): boolean {
+  if (mode === "template" || mode === "manual") return true;
+  if (controlMode === "in_app") return mode === "in_app_llm";
+  if (controlMode === "external_operator") return mode === "external_llm";
+  return false;
+}
+
+function enforceWritingOwnership(value: WritingPreferences, controlMode: AiControlMode): WritingPreferences {
+  return writingModeAllowed(value.mode, controlMode) ? value : { ...value, mode: defaultWritingMode(controlMode) };
 }
 
 function rowNeedsReview(job: JobRow, contactTarget: number): boolean {

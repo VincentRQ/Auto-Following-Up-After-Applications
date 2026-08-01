@@ -18,6 +18,7 @@ const COLUMN_ALIASES = {
   appliedAt: ["applied_at", "applied_date", "date_applied", "application_date", "apply_date", "relevant_date"],
   lastWorkedAt: ["last_worked_at", "last_touched", "updated_at", "worked_at"],
   sentAt: ["sent_at", "outreach_sent_at", "email_sent_at"],
+  followUpDueAt: ["follow_up_due_at", "follow_up_date", "next_follow_up", "followup_due"],
   contactsFound: ["contacts_found", "contact_count", "clean_contacts", "verified_contacts"],
   notes: ["notes", "comments", "outreach_notes", "contact_notes", "personal_notes"],
 } as const;
@@ -219,6 +220,7 @@ function normalizeRow(rawRow: RawRow, originalRow: number, importedAt: string, s
     appliedAt,
     lastWorkedAt: normalizeDate(findValue(rawRow, "lastWorkedAt")) || appliedAt,
     sentAt: explicitSentAt || (status === "sent" ? appliedAt : ""),
+    followUpDueAt: normalizeDate(findValue(rawRow, "followUpDueAt")),
     contactsFound: normalizeNumber(findValue(rawRow, "contactsFound")) ?? (contactEmail.includes("@") ? 1 : null),
     notes: cleanText(findValue(rawRow, "notes")),
     importedAt,
@@ -249,7 +251,7 @@ function deriveRoleTitle(description: string): string {
 export function serializeJobsToCsv(rows: JobRow[]): string {
   const baseHeaders = [
     "profile", "company", "job_title", "job_description", "job_url", "job_id", "source", "status", "status_detail",
-    "applied_at", "last_worked_at", "sent_at", "contacts_found", "notes",
+    "applied_at", "last_worked_at", "sent_at", "follow_up_due_at", "contacts_found", "notes",
   ];
   const extraHeaders = Array.from(new Set(rows.flatMap((row) => Object.keys(row.extraFields ?? {}))))
     .filter((header) => !baseHeaders.includes(normalizeHeader(header)));
@@ -268,6 +270,7 @@ export function serializeJobsToCsv(rows: JobRow[]): string {
       applied_at: row.appliedAt,
       last_worked_at: row.lastWorkedAt,
       sent_at: row.sentAt,
+      follow_up_due_at: row.followUpDueAt ?? "",
       contacts_found: row.contactsFound ?? "",
       notes: row.notes,
       ...row.extraFields,

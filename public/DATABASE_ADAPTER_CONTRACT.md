@@ -24,12 +24,12 @@ No-cost, read-only connection and schema check:
 
 ### `GET /v1/workspaces/:workspace_id`
 
-Return the version 2 workspace JSON object, or JSON `null` when the workspace does
+Return the version 3 workspace JSON object, or JSON `null` when the workspace does
 not exist. The adapter reads `workspace_snapshots.snapshot_json`.
 
 ### `PUT /v1/workspaces/:workspace_id`
 
-Validate and atomically upsert a version 2 workspace JSON object. Return:
+Validate and atomically upsert a version 3 workspace JSON object. Return:
 
 ```json
 {

@@ -3,6 +3,7 @@ import type {
   BatchInstructions,
   BatchReport,
   CalendarPreferences,
+  DailyQueueState,
   IntegrationSettings,
   JobRow,
   MessageDraft,
@@ -39,6 +40,7 @@ export const storageKeys = {
   drafts: `${prefix}drafts`,
   tutorial: `${prefix}tutorial`,
   calendar: `${prefix}calendar`,
+  dailyQueue: `${prefix}daily-queue`,
 };
 
 export function loadProfiles(): ProfileDefinition[] {
@@ -204,6 +206,18 @@ export function loadCalendarPreferences(fallback: CalendarPreferences): Calendar
       ? { ...fallback.includedKinds, ...stored.includedKinds }
       : fallback.includedKinds,
   });
+}
+
+export function loadDailyQueueState(fallback: DailyQueueState): DailyQueueState {
+  const stored = loadJson<Partial<DailyQueueState>>(storageKeys.dailyQueue, {}, isObject);
+  const destinations = new Set(["today", "jobs", "writing", "activity", "settings"]);
+  return {
+    version: 1,
+    date: typeof stored.date === "string" ? stored.date : fallback.date,
+    jobIds: Array.isArray(stored.jobIds) ? [...new Set(stored.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 200))].slice(0, 500) : fallback.jobIds,
+    lastDestination: typeof stored.lastDestination === "string" && destinations.has(stored.lastDestination) ? stored.lastDestination : fallback.lastDestination,
+    updatedAt: typeof stored.updatedAt === "string" ? stored.updatedAt : fallback.updatedAt,
+  };
 }
 
 export function saveJson(key: string, value: unknown): void {

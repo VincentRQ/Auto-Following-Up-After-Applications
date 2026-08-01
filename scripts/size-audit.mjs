@@ -12,6 +12,8 @@ const limits = {
   builtGui: 5 * 1024 * 1024,
   bundledMcp: 5 * 1024 * 1024,
   liteArchive: 50 * 1024 * 1024,
+  liteZip: 50 * 1024 * 1024,
+  updateBundle: 50 * 1024 * 1024,
 };
 
 const candidateFiles = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
@@ -23,12 +25,16 @@ const guiFiles = existsSync(join(root, "dist"))
   : [];
 const mcpPath = join(root, "dist", "outreach-mcp.js");
 const archivePath = join(root, "release", `outreach-console-lite-${version}.tgz`);
+const zipPath = join(root, "release", `outreach-console-lite-${version}.zip`);
+const updateBundlePath = join(root, "release", `outreach-console-update-${version}.json`);
 
 const measurements = [
   measure("Public source candidate", totalSize(candidateFiles), limits.publicSource, candidateFiles.length > 0),
   measure("Built GUI", totalSize(guiFiles), limits.builtGui, guiFiles.length > 0),
   measure("Standalone MCP", existsSync(mcpPath) ? statSync(mcpPath).size : 0, limits.bundledMcp, existsSync(mcpPath)),
   measure("Lite archive", existsSync(archivePath) ? statSync(archivePath).size : 0, limits.liteArchive, existsSync(archivePath)),
+  measure("Lite ZIP", existsSync(zipPath) ? statSync(zipPath).size : 0, limits.liteZip, existsSync(zipPath)),
+  measure("Update bundle", existsSync(updateBundlePath) ? statSync(updateBundlePath).size : 0, limits.updateBundle, existsSync(updateBundlePath)),
 ];
 
 for (const item of measurements) {

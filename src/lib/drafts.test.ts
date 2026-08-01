@@ -18,7 +18,7 @@ const job: JobRow = {
   appliedAt: "2026-07-01",
   lastWorkedAt: "",
   sentAt: "",
-  contactsFound: 0,
+  contactsFound: 3,
   notes: "",
   importedAt: "2026-07-01",
 };
@@ -29,6 +29,16 @@ describe("message drafts", () => {
     expect(drafts).toHaveLength(3);
     expect(new Set(drafts.map((item) => item.id)).size).toBe(3);
     expect(drafts.every((item) => item.status === "needs_writing")).toBe(true);
+  });
+
+  it("does not invent recipient slots when no contacts are known", () => {
+    const drafts = prepareMessageDrafts([{ ...job, contactsFound: 0 }], [], 3, { ...defaultWritingPreferences, mode: "manual" }, "Jordan");
+    expect(drafts).toEqual([]);
+  });
+
+  it("creates only as many slots as have been found", () => {
+    const drafts = prepareMessageDrafts([{ ...job, contactsFound: 1 }], [], 3, { ...defaultWritingPreferences, mode: "manual" }, "Jordan");
+    expect(drafts).toHaveLength(1);
   });
 
   it("renders templates and updates readiness after a recipient is supplied", () => {

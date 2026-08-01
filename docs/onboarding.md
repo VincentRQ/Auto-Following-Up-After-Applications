@@ -5,8 +5,9 @@
 Use this first. It prevents contact-provider calls, mailbox reads, AI connection
 checks, drafts, and sends.
 
-The Lite archive includes `Start Outreach Console - Sample Mode.cmd` for Windows
-and `start-outreach-console-sample.sh` for macOS/Linux. These launchers set the
+The Lite archive includes `Start Outreach Console - Sample Mode.cmd` for Windows,
+`Start Outreach Console - Sample Mode.command` for macOS, and
+`start-outreach-console-sample.sh` for Linux. These launchers set the
 backend lock before the database opens. Loading synthetic rows in an ordinary
 private session does not change the backend mode.
 
@@ -24,15 +25,20 @@ opened by the sample backend.
 
 ## Private Operator Mode
 
-1. Copy `data/local-config.example.json` to `data/local-config.json`.
-2. Add one profile and its sender account alias.
-3. Add the local resume path for that profile.
-4. Use the first-run flow to select primary contact discovery, optional fallback,
-   email service, and storage mode.
-5. Choose browser-only, embedded SQLite, or an existing database adapter.
-6. Put provider keys in the backend environment named in Setup.
-7. Authorize each sender account through the selected mailbox adapter.
-8. Start with `npm run dev:all` and open the Setup tab.
+1. Choose how writing works: Outside AI, Console invokes an AI, or Templates only.
+2. Choose browser-only, embedded SQLite, or an existing database adapter.
+3. Add a profile, sender identity, and resume.
+4. If the storage mode supports local services, select primary contact discovery,
+   an optional fallback, and an email provider.
+5. Put provider keys in the backend environment named in Setup.
+6. Authorize each sender account through the selected mailbox adapter.
+7. Run every displayed connection test. A selected provider is not ready until its
+   exact test succeeds.
+
+Browser-only mode skips steps 4 through 6. The wizard hides unavailable provider
+automation and saves contact entry, email handling, response monitoring, and
+recovery as manual work. Templates only also sets the writing workspace to
+template mode; it does not fall back to an outside AI.
 
 Every provider selection requires a compatible local adapter before it can run.
 The source release includes provider-neutral enrichment, mailbox, and writing
@@ -195,7 +201,8 @@ existing private credential stores.
 ## Storage
 
 - **Browser only** is the smallest option and does not require the backend. It
-  stores the workspace in the browser and disables CRM/mailbox automation.
+  stores the workspace in the browser and leaves contact discovery, email,
+  reply monitoring, and automatic recovery manual.
 - **Embedded SQLite** creates and migrates `data/outreach.sqlite` automatically.
 - **Existing database** requires the downloadable PostgreSQL/MySQL schema and a
   private adapter implementing `public/DATABASE_ADAPTER_CONTRACT.md`.
