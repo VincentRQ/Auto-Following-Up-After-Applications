@@ -64,6 +64,7 @@ export function createUpdateManager({ root, currentVersion, repository = process
         const expectedDigest = String(latest.asset.digest || "");
         if (expectedDigest.startsWith("sha256:") && sha256(bytes) !== expectedDigest.slice(7).toLowerCase()) throw new Error("The GitHub release digest did not match the downloaded update.");
         const bundle = parseAndValidateBundle(bytes, latest.version);
+        const verifiedBytes = Buffer.from(`${JSON.stringify(bundle)}\n`, "utf8");
         const updatesRoot = resolve(installRoot, "data", "updates");
         ensureWithin(installRoot, updatesRoot);
         await assertNoLinks(installRoot, updatesRoot);
@@ -72,10 +73,10 @@ export function createUpdateManager({ root, currentVersion, repository = process
         const bundlePath = resolve(updatesRoot, `outreach-console-update-${latest.version}.json`);
         ensureWithin(updatesRoot, bundlePath);
         // Intentional updater staging: the official-host response is size-capped, digest-checked when available,
-        // parsed through the managed-path allowlist, and verified per file before this fixed local write.
-        await writeFile(bundlePath, bytes, { flag: "w", mode: 0o600 }); // lgtm[js/http-to-file-access]
+        // reduced to the canonical schema, parsed through the managed-path allowlist, and verified per file.
+        await writeFile(bundlePath, verifiedBytes, { flag: "w", mode: 0o600 });
         // Only normalized semantic-version metadata and the already bounded staging path are persisted here.
-        await writeFile(resolve(updatesRoot, "pending-update.json"), `${JSON.stringify({ version: bundle.version, bundlePath, createdAt: new Date().toISOString() }, null, 2)}\n`, { flag: "w", mode: 0o600 }); // lgtm[js/http-to-file-access]
+        await writeFile(resolve(updatesRoot, "pending-update.json"), `${JSON.stringify({ version: bundle.version, bundlePath, createdAt: new Date().toISOString() }, null, 2)}\n`, { flag: "w", mode: 0o600 });
         state = { ...state, state: "ready_to_restart", detail: `Version ${latest.version} is verified and will install during restart.`, canInstall: false };
         return state;
       } catch (error) {
@@ -159,6 +160,7 @@ export function parseAndValidateBundle(bytes, expectedVersion = "") {
   if (bundle?.schemaVersion !== 1 || cleanVersion(bundle.version) !== bundle.version || !Array.isArray(bundle.files) || !bundle.files.length) throw new Error("The update bundle has an invalid manifest.");
   if (expectedVersion && cleanVersion(expectedVersion) !== bundle.version) throw new Error("The update bundle version does not match the selected release.");
   const seen = new Set();
+  const validatedFiles = [];
   let decodedBytes = 0;
   for (const file of bundle.files) {
     const path = normalizeManagedPath(file?.path);
@@ -168,9 +170,15 @@ export function parseAndValidateBundle(bytes, expectedVersion = "") {
     const content = Buffer.from(file.base64, "base64");
     decodedBytes += content.byteLength;
     if (decodedBytes > maximumBundleBytes || content.byteLength !== file.bytes || sha256(content) !== file.sha256) throw new Error(`The update file hash is invalid for ${path}.`);
-    file.path = path;
+    validatedFiles.push({ path, bytes: file.bytes, sha256: file.sha256, base64: file.base64 });
   }
-  return bundle;
+  return {
+    schemaVersion: 1,
+    name: "Outreach Console Lite Update",
+    version: bundle.version,
+    createdAt: typeof bundle.createdAt === "string" && Number.isFinite(Date.parse(bundle.createdAt)) ? new Date(bundle.createdAt).toISOString() : "",
+    files: validatedFiles,
+  };
 }
 
 function managedTarget(root, path) { const normalized = normalizeManagedPath(path); const target = resolve(root, normalized); ensureWithin(root, target); return target; }

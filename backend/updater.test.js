@@ -146,7 +146,12 @@ test("pending updates refuse managed paths redirected through a symbolic link or
 
 test("update bundles reject traversal, unmanaged data, duplicate paths, and bad hashes", () => {
   const valid = bundleFor("2.0.0", [{ path: "web/index.html", content: Buffer.from("ok") }]);
-  assert.equal(parseAndValidateBundle(Buffer.from(JSON.stringify(valid)), "2.0.0").files.length, 1);
+  valid.unexpected = "discard me";
+  valid.files[0].unexpected = "discard me too";
+  const parsed = parseAndValidateBundle(Buffer.from(JSON.stringify(valid)), "2.0.0");
+  assert.equal(parsed.files.length, 1);
+  assert.equal("unexpected" in parsed, false);
+  assert.equal("unexpected" in parsed.files[0], false);
   for (const path of ["../outside.txt", "data/outreach.sqlite", ".env", "C:/outside.txt"]) {
     const unsafe = bundleFor("2.0.0", [{ path, content: Buffer.from("bad") }]);
     assert.throws(() => parseAndValidateBundle(Buffer.from(JSON.stringify(unsafe)), "2.0.0"), /unsafe|not managed/i);
