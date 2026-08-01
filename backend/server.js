@@ -13,6 +13,8 @@ export function createOutreachServer({
   staticRoot = process.env.OUTREACH_STATIC_ROOT ?? "",
   allowedOrigins = parseAllowedOrigins(process.env.OUTREACH_ALLOWED_ORIGINS),
   maximumBodyBytes = Number(process.env.OUTREACH_MAX_BODY_BYTES ?? 2 * 1024 * 1024),
+  updateManager = null,
+  onRestartRequested = null,
 } = {}) {
   maximumBodyBytes = Number.isFinite(maximumBodyBytes) ? Math.max(1024, Math.min(maximumBodyBytes, 20 * 1024 * 1024)) : 2 * 1024 * 1024;
   const resolvedDatabasePath = providers?.publicSampleMode === true
@@ -32,6 +34,20 @@ export function createOutreachServer({
     try {
       const url = new URL(request.url, "http://localhost");
       if (request.method === "GET" && url.pathname === "/api/health") return send(response, 200, service.health());
+      if (request.method === "GET" && url.pathname === "/api/updates/status") return send(response, 200, updateStatus(updateManager, providers));
+      if (request.method === "POST" && url.pathname === "/api/updates/check") {
+        if (providers?.publicSampleMode === true) throw httpError(403, "Automatic updates are disabled in Public Sample Mode");
+        if (!updateManager) return send(response, 200, updateStatus(null, providers));
+        return send(response, 200, await updateManager.check());
+      }
+      if (request.method === "POST" && url.pathname === "/api/updates/install") {
+        if (providers?.publicSampleMode === true) throw httpError(403, "Automatic updates are disabled in Public Sample Mode");
+        if (!updateManager || typeof onRestartRequested !== "function") throw httpError(409, "Automatic installation is available only in the downloaded Lite release");
+        const result = await updateManager.stage((await body(request, maximumBodyBytes)).confirmation);
+        send(response, 202, result);
+        setTimeout(() => onRestartRequested(), 250);
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/api/providers/check") return send(response, 200, await service.providerCheck());
       if (request.method === "POST" && url.pathname === "/api/batches") return send(response, 201, service.submitBatch(await body(request, maximumBodyBytes)));
       if (request.method === "POST" && url.pathname === "/api/import/applications") return send(response, 201, service.importApplications(await body(request, maximumBodyBytes)));
@@ -82,6 +98,11 @@ export function createOutreachServer({
   });
   server.on("close", () => db.close());
   return server;
+}
+
+function updateStatus(updateManager, providers) {
+  if (providers?.publicSampleMode === true) return { state: "unsupported", currentVersion: "", latestVersion: "", releaseName: "", releaseUrl: "", publishedAt: "", detail: "Automatic updates are disabled in Public Sample Mode.", canInstall: false, checkedAt: "" };
+  return updateManager?.status() ?? { state: "unsupported", currentVersion: "", latestVersion: "", releaseName: "", releaseUrl: "", publishedAt: "", detail: "Automatic updates are available only in the downloaded Lite release.", canInstall: false, checkedAt: "" };
 }
 
 function send(response, status, value) {

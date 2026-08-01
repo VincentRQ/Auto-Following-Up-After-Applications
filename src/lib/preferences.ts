@@ -12,7 +12,10 @@ export const defaultStorageSettings: StorageSettings = {
 };
 
 export const defaultWorkflowPreferences: WorkflowPreferences = {
-  version: 1,
+  version: 2,
+  interfaceMode: "simple",
+  showProcessRail: true,
+  showGuidancePanel: true,
   colorTheme: "terminal",
   density: "compact",
   accentColor: "green",
@@ -25,6 +28,10 @@ export const defaultWorkflowPreferences: WorkflowPreferences = {
   requireDraftReview: true,
   requireSendApproval: true,
   autoPrepareRedirectDrafts: true,
+  followUpDays: 3,
+  dailyQueueLimit: 12,
+  dailySummaryEnabled: true,
+  providerCreditMode: "ask",
   leftPanelWidth: 280,
   rightPanelWidth: 330,
   modules: {
@@ -67,7 +74,10 @@ export function normalizeWorkflowPreferences(value: Partial<WorkflowPreferences>
   return {
     ...defaultWorkflowPreferences,
     ...(value ?? {}),
-    version: 1,
+    version: 2,
+    interfaceMode: value?.interfaceMode === "advanced" ? "advanced" : "simple",
+    showProcessRail: value?.showProcessRail !== false,
+    showGuidancePanel: value?.showGuidancePanel !== false,
     colorTheme: ["terminal", "light", "graphite", "mulberry", "high_contrast"].includes(value?.colorTheme ?? "") ? value!.colorTheme! : defaultWorkflowPreferences.colorTheme,
     density: ["compact", "comfortable"].includes(value?.density ?? "") ? value!.density! : defaultWorkflowPreferences.density,
     accentColor: ["green", "cyan", "amber", "rose", "violet"].includes(value?.accentColor ?? "") ? value!.accentColor! : defaultWorkflowPreferences.accentColor,
@@ -80,6 +90,10 @@ export function normalizeWorkflowPreferences(value: Partial<WorkflowPreferences>
     requireDraftReview: value?.requireDraftReview !== false,
     requireSendApproval: value?.requireSendApproval !== false,
     autoPrepareRedirectDrafts: value?.autoPrepareRedirectDrafts !== false,
+    followUpDays: clampInteger(value?.followUpDays, 1, 90, defaultWorkflowPreferences.followUpDays),
+    dailyQueueLimit: clampInteger(value?.dailyQueueLimit, 1, 100, defaultWorkflowPreferences.dailyQueueLimit),
+    dailySummaryEnabled: value?.dailySummaryEnabled !== false,
+    providerCreditMode: ["ask", "allow", "never"].includes(value?.providerCreditMode ?? "") ? value!.providerCreditMode! : defaultWorkflowPreferences.providerCreditMode,
     leftPanelWidth: clampInteger(value?.leftPanelWidth, 220, 440, defaultWorkflowPreferences.leftPanelWidth),
     rightPanelWidth: clampInteger(value?.rightPanelWidth, 260, 520, defaultWorkflowPreferences.rightPanelWidth),
     modules,

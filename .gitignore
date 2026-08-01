@@ -2,6 +2,7 @@ node_modules/
 dist/
 build/
 release/
+.runtime/
 *.mcpb
 *.tgz
 data/*.sqlite
@@ -11,6 +12,8 @@ data/*.sqlite.bak
 data/backups/
 data/local-config.json
 data/provider-work/
+data/updates/
+data/update-backups/
 *.xls
 *.xlsx
 *.xlsm

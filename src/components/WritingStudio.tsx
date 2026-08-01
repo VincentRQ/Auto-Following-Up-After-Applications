@@ -1,6 +1,6 @@
 import { Check, Clipboard, FileJson, Pencil, RefreshCw, Sparkles, Users } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { JobRow, MessageDraft, ProfileDefinition, WritingPreferences } from "../types";
+import type { AiControlMode, JobRow, MessageDraft, ProfileDefinition, WritingPreferences } from "../types";
 import { applyGeneratedMessages, buildLlmWritingBrief, prepareMessageDrafts, updateMessageDraft, wordCount } from "../lib/drafts";
 
 interface WritingStudioProps {
@@ -11,6 +11,7 @@ interface WritingStudioProps {
   activeProfile: string;
   contactTarget: number;
   preferences: WritingPreferences;
+  controlMode: AiControlMode;
   onPreferences: (value: WritingPreferences) => void;
   onDrafts: (value: MessageDraft[]) => void;
   onGenerate: (brief: string, drafts: MessageDraft[]) => Promise<Array<{ draft_id: string; subject: string; body: string }>>;
@@ -24,10 +25,16 @@ export function WritingStudio({
   activeProfile,
   contactTarget,
   preferences,
+  controlMode,
   onPreferences,
   onDrafts,
   onGenerate,
 }: WritingStudioProps) {
+  const writingMethods = controlMode === "templates_only"
+    ? [{ value: "template", label: "Template merge" }, { value: "manual", label: "Write manually" }]
+    : controlMode === "in_app"
+      ? [{ value: "in_app_llm", label: "Configured in-app AI" }, { value: "template", label: "Template merge" }, { value: "manual", label: "Write manually" }]
+      : [{ value: "external_llm", label: "Outside AI / LLM" }, { value: "template", label: "Template merge" }, { value: "manual", label: "Write manually" }];
   const selectedIds = useMemo(() => new Set(selectedJobs.map((job) => job.id)), [selectedJobs]);
   const visibleDrafts = selectedIds.size
     ? drafts.filter((draft) => selectedIds.has(draft.jobRowId))
@@ -45,7 +52,7 @@ export function WritingStudio({
     const prepared = prepareMessageDrafts(selectedJobs, visibleDrafts, contactTarget, preferences, selectedProfile?.senderName ?? "", selectedProfile?.notes ?? "relevant work in the field");
     onDrafts([...retained, ...prepared]);
     setActiveId(prepared[0]?.id ?? "");
-    setMessage(`${prepared.length} individual message slots prepared.`);
+    setMessage(prepared.length ? `${prepared.length} message${prepared.length === 1 ? "" : "s"} prepared from known contacts.` : "No messages were created because the selected applications do not have known contacts. Use Find contacts or Enter contact first.");
   }
 
   async function copyBrief() {
@@ -108,7 +115,7 @@ export function WritingStudio({
         <div><span className="eyebrow">Individualized outreach</span><h2>Writing studio</h2></div>
         <div className="studio-actions">
           <button className="small-button" onClick={prepare} disabled={!selectedJobs.length}><Users size={15} /> Prepare selected</button>
-          <button className="small-button" onClick={() => void copyBrief()} disabled={!visibleDrafts.length}><Clipboard size={15} /> Copy AI brief</button>
+          {controlMode === "external_operator" && <button className="small-button" onClick={() => void copyBrief()} disabled={!visibleDrafts.length}><Clipboard size={15} /> Copy AI brief</button>}
           {preferences.mode === "in_app_llm" && <button className="small-button" onClick={() => void generateInApp()} disabled={!visibleDrafts.length || generating}><Sparkles size={15} /> {generating ? "Generating..." : "Generate"}</button>}
         </div>
       </header>
@@ -116,10 +123,7 @@ export function WritingStudio({
       <div className="writing-global">
         <label>Writing method
           <select value={preferences.mode} onChange={(event) => onPreferences({ ...preferences, mode: event.target.value as WritingPreferences["mode"] })}>
-            <option value="external_llm">Outside AI / LLM</option>
-            <option value="in_app_llm">Configured in-app AI</option>
-            <option value="template">Template merge</option>
-            <option value="manual">Write manually</option>
+            {writingMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
           </select>
         </label>
         <label>Maximum body words
@@ -160,7 +164,7 @@ export function WritingStudio({
               <label>Name<input value={active.recipientName} onChange={(event) => updateActive({ recipientName: event.target.value })} /></label>
               <label>Title<input value={active.recipientTitle} onChange={(event) => updateActive({ recipientTitle: event.target.value })} /></label>
               <label>Email<input type="email" value={active.recipientEmail} onChange={(event) => updateActive({ recipientEmail: event.target.value })} /></label>
-              <label>Method<select value={active.mode} onChange={(event) => updateActive({ mode: event.target.value as MessageDraft["mode"] })}><option value="external_llm">Outside AI</option><option value="in_app_llm">In-app AI</option><option value="template">Template</option><option value="manual">Manual</option></select></label>
+              <label>Method<select value={active.mode} onChange={(event) => updateActive({ mode: event.target.value as MessageDraft["mode"] })}>{writingMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select></label>
             </div>
             <label>Individual instructions<textarea value={active.promptOverride} onChange={(event) => updateActive({ promptOverride: event.target.value })} placeholder="Optional context or tone for only this recipient" /></label>
             <label>Subject<input value={active.subject} onChange={(event) => updateActive({ subject: event.target.value })} /></label>

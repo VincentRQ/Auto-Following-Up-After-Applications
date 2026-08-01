@@ -1,4 +1,4 @@
-import type { AiConnectionCheck, AiConnectionSettings, BackendHealth, BatchReport, BatchSettings, CrmCompany, CrmCompanyDetail, CrmContact, DashboardData, IntegrationSettings, JobRow, MailboxEvent, MessageDraft, OutreachHistoryItem, PreflightResult, QueueItem, RecoveryException, SetupStatus, WorkspaceResetPreview, WorkspaceResetResult, WorkspaceSnapshot } from "../types";
+import type { AiConnectionCheck, AiConnectionSettings, BackendHealth, BatchReport, BatchSettings, CrmCompany, CrmCompanyDetail, CrmContact, DashboardData, IntegrationSettings, JobRow, MailboxEvent, MessageDraft, OutreachHistoryItem, PreflightResult, QueueItem, RecoveryException, ReleaseUpdateStatus, SetupStatus, WorkspaceResetPreview, WorkspaceResetResult, WorkspaceSnapshot } from "../types";
 import { csvCell } from "./csv";
 import { classifyContactQuality } from "./runner";
 
@@ -95,6 +95,25 @@ export async function fetchCrmCompanies(backendUrl: string): Promise<CrmCompany[
   return value.companies;
 }
 
+export function importApplicationsToBackend(backendUrl: string, jobs: JobRow[]): Promise<{ imported: number; companies: number; jobs: number }> {
+  return mutateBackend(backendUrl, "/api/import/applications", {
+    source: "outreach_console",
+    applications: jobs.map((job) => ({
+      source_row_id: job.id,
+      company: job.company,
+      role_title: job.roleTitle,
+      job_id: job.jobId,
+      job_url: job.jobUrl,
+      profile: job.profile,
+      applied_at: job.appliedAt,
+    })),
+  });
+}
+
+export function enrichCrmCompany(backendUrl: string, companyId: number, maxContacts: number, spendCredits: boolean): Promise<{ contacts?: unknown[]; savedContacts: number; paidLookups?: number }> {
+  return mutateBackend(backendUrl, `/api/crm/companies/${companyId}/enrich`, { max_contacts: maxContacts, spend_credits: spendCredits });
+}
+
 export function fetchCrmCompany(backendUrl: string, companyId: number): Promise<CrmCompanyDetail> {
   return fetchBackend<CrmCompanyDetail>(backendUrl, `/api/crm/companies/${companyId}`);
 }
@@ -140,6 +159,9 @@ export async function downloadIncidentReport(backendUrl: string): Promise<void> 
 export function previewWorkspaceReset(backendUrl: string): Promise<WorkspaceResetPreview> { return mutateBackend(backendUrl, "/api/system/reset/preview", {}); }
 export function resetBackendWorkspace(backendUrl: string, token: string, confirmation: string): Promise<WorkspaceResetResult> { return mutateBackend(backendUrl, "/api/system/reset", { token, confirmation }); }
 export function checkAiConnection(backendUrl: string, input: AiConnectionSettings): Promise<AiConnectionCheck> { return mutateBackend(backendUrl, "/api/writing/check", input); }
+export function fetchUpdateStatus(backendUrl: string): Promise<ReleaseUpdateStatus> { return fetchBackend(backendUrl, "/api/updates/status"); }
+export function checkForUpdates(backendUrl: string): Promise<ReleaseUpdateStatus> { return mutateBackend(backendUrl, "/api/updates/check", {}); }
+export function installUpdateAndRestart(backendUrl: string): Promise<ReleaseUpdateStatus> { return mutateBackend(backendUrl, "/api/updates/install", { confirmation: "INSTALL AND RESTART" }); }
 export function generateMessages(backendUrl: string, input: { brief: string; drafts: MessageDraft[]; maximum_words: number; ai_connection: AiConnectionSettings }): Promise<Array<{ draft_id: string; subject: string; body: string }>> {
   return mutateBackend<{ messages: Array<{ draft_id: string; subject: string; body: string }> }>(backendUrl, "/api/writing/generate", input).then((value) => value.messages);
 }

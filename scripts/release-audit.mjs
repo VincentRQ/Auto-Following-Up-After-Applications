@@ -33,6 +33,7 @@ const allowedDataFiles = new Set([
 ]);
 const publicContact = ["Vin", "cent", "@Rosette.Solutions"].join("");
 const publicRepository = ["https://github.com/", "Vin", "centRQ/Auto-Following-Up-After-Applications"].join("");
+const publicRepositorySlug = ["Vin", "centRQ/Auto-Following-Up-After-Applications"].join("");
 const publicMaintainer = ["Vin", "cent Quimby"].join("");
 const publicAccount = ["Vin", "centRQ"].join("");
 const publicMaintainerAssignment = `  - ${["Vin", "centRQ"].join("")}`;
@@ -86,6 +87,7 @@ for (const file of files) {
   let content = bytes.toString("utf8")
     .replaceAll(publicContact, "[PUBLIC_CONTACT]")
     .replaceAll(publicRepository, "[PUBLIC_REPOSITORY]")
+    .replaceAll(publicRepositorySlug, "[PUBLIC_REPOSITORY]")
     .replaceAll(publicMaintainer, "[PUBLIC_MAINTAINER]")
     .replaceAll(publicMaintainerAssignment, "  - [PUBLIC_MAINTAINER]");
 

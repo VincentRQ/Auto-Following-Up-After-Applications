@@ -10,9 +10,12 @@
     "version": { "const": 1 },
     "workflow": {
       "type": "object",
-      "required": ["version", "colorTheme", "density", "accentColor", "defaultSpacingSeconds", "defaultContactTarget", "modules"],
+      "required": ["version", "interfaceMode", "showProcessRail", "showGuidancePanel", "colorTheme", "density", "accentColor", "defaultSpacingSeconds", "defaultContactTarget", "followUpDays", "dailyQueueLimit", "dailySummaryEnabled", "providerCreditMode", "modules"],
       "properties": {
-        "version": { "const": 1 },
+        "version": { "const": 2 },
+        "interfaceMode": { "enum": ["simple", "advanced"] },
+        "showProcessRail": { "type": "boolean" },
+        "showGuidancePanel": { "type": "boolean" },
         "colorTheme": { "enum": ["terminal", "light", "graphite", "mulberry", "high_contrast"] },
         "density": { "enum": ["compact", "comfortable"] },
         "accentColor": { "enum": ["green", "cyan", "amber", "rose", "violet"] },
@@ -25,6 +28,10 @@
         "requireDraftReview": { "type": "boolean" },
         "requireSendApproval": { "type": "boolean" },
         "autoPrepareRedirectDrafts": { "type": "boolean" },
+        "followUpDays": { "type": "integer", "minimum": 1, "maximum": 90 },
+        "dailyQueueLimit": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "dailySummaryEnabled": { "type": "boolean" },
+        "providerCreditMode": { "enum": ["ask", "allow", "never"] },
         "modules": {
           "type": "object",
           "additionalProperties": false,

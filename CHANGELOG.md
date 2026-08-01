@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.5.0 - 2026-07-31
+
+- Added Today as the default screen, with new applications, contact gaps, draft
+  review, schedules, replies, redirects, interviews, and due follow-ups.
+- Added a saved daily queue, one-click resume, configurable follow-up interval,
+  optional Today summary, and due/overdue calculation.
+- Added a persistent Applications-to-Responses process rail and a next-step panel
+  that explains click effects, automation, manual work, blockers, and fixes.
+- Added Simple and Advanced views. Simple keeps Today, Applications, Messages,
+  Activity, and Settings visible; Advanced retains the full three-panel console.
+- Added a How It Works screen with a 30-second path, automatically advancing
+  synthetic dry run, terminology, provider setup, and failure recovery help.
+- Made setup choices authoritative. Templates only forces template/manual writing,
+  browser-only hides unavailable providers, and selected providers remain unready
+  until their exact tests pass.
+- Removed invented Contact 1/2/3 recipient slots. Jobs without contacts now block
+  with Find contacts, Enter contact, and Remove from batch actions.
+- Replaced ambiguous action labels with the exact dry-check or scheduled action and
+  clarified browser-only readiness, manual providers, troubleshooting, and storage.
+- Added a verified Lite updater with GitHub-host restrictions, bundle and file hash
+  checks, a 50 MiB cap, managed-path and symlink/junction enforcement, backups,
+  rollback, and user-data preservation.
+- Added on-demand portable Node 24 setup for Windows, macOS, and Linux, plus a ZIP
+  release, macOS launchers, checksum checks, and package smoke tests.
+- Expanded update, setup, queue, package, storage-corruption, sample-mode, and
+  synthetic end-to-end coverage.
+- Corrected setup-modal overflow and process-rail collisions at a true 390 px
+  mobile viewport.
+
 ## 0.4.0 - 2026-07-31
 
 - Added five lightweight CSS background effects plus an Off option, with saved

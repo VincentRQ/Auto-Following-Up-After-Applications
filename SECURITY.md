@@ -22,9 +22,19 @@ branch.
   environment-variable names. Browser values cannot redirect those credentials.
 - Mailbox-provider responses are reduced to the IDs and links the UI needs before
   they cross the backend boundary.
+- Lite updates accept only a version-matched release asset from approved GitHub
+  hosts. Bundles are capped at 50 MiB, restricted to managed application paths,
+  verified per file, backed up, and rolled back after a partial failure. The
+  installer refuses symbolic links and junctions in managed update paths.
+- The updater cannot replace `data/`, environment files, local databases, resumes,
+  spreadsheets, provider credentials, or external storage.
 
 These controls do not sandbox a client that also has unrestricted shell access.
 Such a client may be able to call local provider helpers directly.
+
+The loopback API is not an authentication boundary against other software already
+running as the same operating-system user. Run the console only on a trusted local
+account and do not expose its port through a proxy or network-forwarding rule.
 
 ## Automated Checks
 

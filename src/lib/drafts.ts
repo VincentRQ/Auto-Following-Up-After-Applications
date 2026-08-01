@@ -13,7 +13,10 @@ export function prepareMessageDrafts(
   const existingById = new Map(existing.map((draft) => [draft.id, draft]));
   const next: MessageDraft[] = [];
   for (const job of jobs) {
-    for (let slot = 1; slot <= Math.max(1, contactTarget); slot += 1) {
+    const knownContacts = Math.max(0, job.contactsFound ?? 0);
+    const completedExisting = existing.filter((draft) => draft.jobRowId === job.id && draft.recipientEmail.includes("@")).length;
+    const desiredSlots = Math.min(Math.max(1, contactTarget), Math.max(knownContacts, completedExisting));
+    for (let slot = 1; slot <= desiredSlots; slot += 1) {
       const id = `${job.id}::${slot}`;
       const saved = existingById.get(id);
       if (saved) {

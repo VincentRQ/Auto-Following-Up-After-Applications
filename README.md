@@ -12,28 +12,33 @@ It does not apply to jobs, bypass CAPTCHAs, scrape LinkedIn, or send mail withou
 - Keep separate job profiles, sender accounts, resumes, instructions, and writing notes.
 - Connect contact-discovery and email providers through replaceable adapters.
 - Prepare one email per recipient with a job-specific detail and one simple ask.
+- Start each day from a short Today queue with due work, replies, redirects, and interviews.
+- Follow a visible Applications -> Contacts -> Drafts -> Review -> Scheduled -> Sent -> Responses rail.
 - Run the full workflow in shadow mode before anything is sent.
 - Space approved emails, keep company history, and avoid duplicate outreach.
 - Track replies, application confirmations, rejections, bounces, and interviews.
 - Handle OOO redirects, wrong-person referrals, bounced contacts, and repeated failures.
 - Use the GUI directly or connect an AI through the bundled MCP server and operator skill.
 
-The browser workspace is enough for simple use. SQLite, provider connections, and AI writing are optional.
+The default Simple view has five destinations: Today, Applications, Messages, Activity, and Settings. Advanced view restores the full operational console. Both views use the same saved work.
 
 ## Quick Start
 
-Outreach Console needs [Node.js 24 or newer](https://nodejs.org/en/download). The Lite release does not need `npm install`.
-
 1. Open the [latest release](https://github.com/VincentRQ/Auto-Following-Up-After-Applications/releases/latest).
-2. Download `outreach-console-lite-<version>.tgz` and extract it.
-3. Open the extracted `package` folder.
+2. Download `outreach-console-lite-<version>.zip` and extract it.
+3. Open the extracted `outreach-console-lite-<version>` folder.
 4. On Windows, double-click `Start Outreach Console.cmd`.
-5. On macOS or Linux, run `./start-outreach-console.sh`.
+5. On macOS, open `Start Outreach Console.command`. On Linux, run `./start-outreach-console.sh`.
 
-The launcher starts the local service and opens `http://127.0.0.1:43127`. No account is created, and the project sends no telemetry to its author.
+The launcher starts the local service and opens `http://127.0.0.1:43127`. If Node 24 is missing, it asks before downloading a portable copy from nodejs.org, verifies the published SHA-256 checksum, and keeps it inside the application folder. No account is created, no `npm install` is needed, and the project sends no telemetry to its author.
+
+The ZIP is intentionally portable instead of an unsigned installer. Extraction is
+a one-time step; after v0.5.0, compatible releases can be installed from the
+Settings update button without downloading or extracting another archive.
 
 For a locked demonstration, use `Start Outreach Console - Sample Mode.cmd` on
-Windows or `./start-outreach-console-sample.sh` on macOS/Linux, then load the
+Windows, `Start Outreach Console - Sample Mode.command` on macOS, or
+`./start-outreach-console-sample.sh` on Linux, then load the
 synthetic rows in Data Source. Public Sample Mode cannot call paid, AI, contact,
 or email providers. Loading synthetic rows from the ordinary launcher does not
 change the backend's operating mode; Setup always shows which mode is active.
@@ -43,12 +48,28 @@ change the backend's operating mode; Setup always shows which mode is active.
 The opening wizard asks for the parts that affect how the workflow runs:
 
 1. Choose whether an outside AI operates the console, the console calls an AI, or no AI is used.
-2. Edit or remove the starter job profiles. Their order is shuffled only on the first launch, then saved.
-3. Choose contact and email providers, or leave either step disabled.
-4. Pick browser storage, embedded SQLite, or an existing database adapter.
+2. Pick browser storage, embedded SQLite, or an existing database adapter.
+3. Edit or remove the starter job profiles. Their order is shuffled only on the first launch, then saved.
+4. Choose contact and email providers when the selected storage mode can use them.
 5. Test the selected connections before entering the main workspace.
 
+Browser-only setup keeps provider work manual and hides connection controls that cannot run. Templates only selects template writing. A provider is never shown as ready merely because its name was selected.
+
 The setup wizard can be reopened from the top bar. Start Fresh clears only Outreach Console state and offers a backup first. It does not remove resumes, spreadsheets, credentials, CLI logins, provider configuration, or external databases.
+
+## Daily Use
+
+Today opens by default and answers five questions without making you interpret system logs:
+
+- Where am I in the process?
+- What should I do next?
+- What will happen when I click the next action?
+- What is automated, and what still requires me?
+- Why is something blocked, and how do I fix it?
+
+Save a daily queue to keep due and overdue follow-ups together. **Continue where I left off** restores that queue, its profile, and the last useful screen. The process rail shows a count and next action for every stage. Blocked contact work links directly to **Find contacts**, **Enter contact**, and **Remove from batch**.
+
+Open **How it works** for a 30-second overview, a synthetic guided dry run, and the detailed reference. The demonstration never calls a provider, spends a credit, invokes an AI, or sends email.
 
 ## Application File
 
@@ -116,6 +137,12 @@ Outreach Console focuses on the repetitive half after that point. It organizes t
 
 Jobs sit under companies, and outreach sits under contacts. This prevents two applications at the same company from creating contradictory follow-up.
 
+## Updates
+
+The downloaded Lite release checks GitHub only when you press **Check for updates** in Settings. If a newer release is available, **Install version and restart** names the exact action before it runs.
+
+The updater accepts only the matching release bundle from approved GitHub hosts. It verifies the release digest when GitHub supplies one, verifies every file hash, stages the update under `data/updates`, backs up replaced application files, and rolls back a partial installation. It never replaces `data/`, resumes, linked spreadsheets, environment files, provider credentials, or external databases. Source checkouts and Public Sample Mode do not install updates automatically. See [Updates](docs/UPDATES.md).
+
 ## MCP And Skill
 
 The Lite package includes `mcp/outreach-mcp.js` and `skills/outreach-console-operator/`.
@@ -139,7 +166,7 @@ Read [AI Operator Guide](public/AI_OPERATOR_GUIDE.md) before enabling contact de
 - The Lite archive has a hard 50 MiB ceiling and no runtime npm dependencies.
 
 Read [Security](SECURITY.md), [Privacy](PRIVACY.md), and the
-[v0.4.0 review](docs/SECURITY_REVIEW_v0.4.0.md) before connecting a real mailbox
+[v0.5.0 review](docs/SECURITY_REVIEW_v0.5.0.md) before connecting a real mailbox
 or provider.
 
 ## Development

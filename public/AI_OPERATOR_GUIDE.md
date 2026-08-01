@@ -4,6 +4,9 @@ This console supports three AI ownership modes. Read the saved setup choice befo
 acting. Never assume that both the outside AI and the local backend should call the
 same provider.
 
+Start by reading Today and the process rail. They identify the current stage,
+next action, click effect, automatic boundary, manual work, and blocker recovery.
+
 ## External operator
 
 Use this mode when Codex, Claude, Cursor, OpenCode, or another agent surrounds the
@@ -42,7 +45,9 @@ Use this mode when the console invokes a configured CLI or API adapter.
 ## Templates only
 
 The console may import, queue, schedule, and create template-driven plans without
-invoking an LLM. Local contact and mailbox adapters may still run when configured.
+invoking an LLM. The Messages workspace must remain on template or manual writing.
+Local contact and mailbox adapters may still run when configured outside
+browser-only mode.
 
 ## Required operating rules
 

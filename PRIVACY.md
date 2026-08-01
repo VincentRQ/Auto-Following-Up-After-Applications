@@ -15,6 +15,8 @@ service and sends no telemetry to its authors.
 - Profile routing and local resume/helper paths are stored in
   `data/local-config.json` when private operator mode is configured.
 - Provider work files may be created temporarily under `data/provider-work/`.
+- Verified update bundles and application-file backups may be stored under
+  `data/updates/` and `data/update-backups/`. They do not contain workspace data.
 
 These paths are ignored by git.
 
@@ -45,6 +47,11 @@ terms for its handling of that data.
 Contact identities and mailbox content are not exposed through MCP by default.
 They require separate opt-in settings. Credentials are never accepted as tool
 arguments and should not be pasted into prompts.
+
+The Lite updater contacts GitHub only after the user presses **Check for updates**
+or **Install and restart**. GitHub receives the ordinary network metadata for that
+request. Outreach Console does not send job, contact, message, or profile data in
+an update check.
 
 ## Retention
 
