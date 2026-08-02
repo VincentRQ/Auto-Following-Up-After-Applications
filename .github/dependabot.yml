@@ -8,6 +8,18 @@ updates:
       time: "09:00"
       timezone: America/New_York
     open-pull-requests-limit: 5
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
+    groups:
+      safe-npm-updates:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -16,3 +28,10 @@ updates:
       time: "09:15"
       timezone: America/New_York
     open-pull-requests-limit: 5
+    groups:
+      safe-action-updates:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

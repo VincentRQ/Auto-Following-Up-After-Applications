@@ -166,7 +166,7 @@ Read [AI Operator Guide](public/AI_OPERATOR_GUIDE.md) before enabling contact de
 - The Lite archive has a hard 50 MiB ceiling and no runtime npm dependencies.
 
 Read [Security](SECURITY.md), [Privacy](PRIVACY.md), and the
-[v0.5.0 review](docs/SECURITY_REVIEW_v0.5.0.md) before connecting a real mailbox
+[latest security review](docs/SECURITY_REVIEW_v0.5.1.md) before connecting a real mailbox
 or provider.
 
 ## Development

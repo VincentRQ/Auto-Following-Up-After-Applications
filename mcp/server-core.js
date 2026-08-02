@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import packageInfo from "../package.json" with { type: "json" };
 import { createBackendClient } from "./backend-client.js";
 import { createConfirmStore } from "./confirm.js";
 import { fail, ok } from "./result.js";
@@ -53,7 +54,7 @@ export function createOutreachMcpServer(config, options = {}) {
   const client = options.client ?? createBackendClient(config.backendUrl, options.fetchImpl);
   const confirms = options.confirmStore ?? createConfirmStore();
   const server = new McpServer(
-    { name: "outreach-console-mcp", version: options.version ?? "0.5.0" },
+    { name: "outreach-console-mcp", version: options.version ?? packageInfo.version },
     {
       instructions: [
         "This server operates a local job-application outreach pipeline through its localhost backend.",

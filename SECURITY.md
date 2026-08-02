@@ -3,7 +3,8 @@
 ## Supported Release
 
 Security fixes currently target the latest tagged release and the default
-branch.
+branch. Older portable releases should use the in-app updater or install the
+latest release before reporting a reproducible issue.
 
 ## Boundaries
 
@@ -40,9 +41,14 @@ account and do not expose its port through a proxy or network-forwarding rule.
 
 - Pull requests and changes to `main` run the public repository's release
   verification and CodeQL workflows.
+- Pull requests run GitHub's dependency review and fail when they introduce a
+  known moderate-or-higher vulnerability in runtime, development, or unknown
+  dependency scopes.
 - CodeQL also runs weekly with the extended JavaScript and TypeScript security
   query suite.
 - Dependabot checks npm packages and GitHub Actions weekly.
+- Release verification runs both `npm audit --audit-level=high` and npm package
+  signature verification.
 - `npm audit --audit-level=high` checks published npm advisories.
 - `npm run audit:release` rejects common credential formats, private document and
   database types, user-specific paths, and personal operational data.
@@ -54,11 +60,14 @@ release is secure.
 
 ## Reporting
 
-Use the GUI's **Share a bug** action for a sanitized, trackable GitHub issue. Use
-**Email support** when a useful reproduction requires private context that should
-not be posted publicly. Do not include credentials, resumes, recruiter contact
-exports, mailbox text, private database files, or user-specific local paths in a
-public issue. Remove private data from a minimal reproduction before sharing it.
+Report a suspected vulnerability through [GitHub's private vulnerability
+reporting form](https://github.com/VincentRQ/Auto-Following-Up-After-Applications/security/advisories/new).
+Use the GUI's **Share a bug** action only for sanitized, non-security defects. Use
+**Email support** when a useful non-security reproduction requires private context
+that should not be posted publicly. Do not include credentials, resumes, recruiter
+contact exports, mailbox text, private database files, or user-specific local
+paths in a public issue. Remove private data from a minimal reproduction before
+sharing it.
 
 The **Start fresh** action requires a short-lived one-time preview token and the
 exact `START FRESH` phrase. It clears only Outreach Console browser state and,
