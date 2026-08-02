@@ -40,7 +40,7 @@
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^5.1.1",
     "esbuild": "^0.28.1",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^0.577.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "read-excel-file": "^9.3.1",
