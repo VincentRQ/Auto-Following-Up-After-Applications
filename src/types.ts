@@ -105,7 +105,7 @@ export interface StorageSettings {
   externalSchemaReady: boolean;
 }
 
-export type ColorTheme = "terminal" | "light" | "graphite" | "mulberry" | "high_contrast";
+export type ColorTheme = "terminal" | "amber_console" | "light" | "graphite" | "mulberry" | "high_contrast";
 export type InterfaceMode = "simple" | "advanced";
 export type InterfaceDensity = "compact" | "comfortable";
 export type AccentColor = "green" | "cyan" | "amber" | "rose" | "violet";

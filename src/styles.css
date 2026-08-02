@@ -120,6 +120,59 @@ button:disabled {
 @keyframes background-data-points { to { background-position: 93px 62px; } }
 @keyframes background-circuit-traces { to { background-position: 220px 72px, -72px 144px; } }
 
+.shell[data-theme="amber_console"] {
+  --page: #080400;
+  --input: #050200;
+  --panel: #100700;
+  --panel-2: #180b00;
+  --panel-glass: rgba(16, 7, 0, 0.97);
+  --text: #ffe1a3;
+  --line: #6b4100;
+  --muted: #d28b21;
+  --green: #ffb000;
+  --cyan: #ffd166;
+  --amber: #ffb000;
+  --red: #ffcf70;
+  --violet: #e69720;
+  --page-glow: rgba(255, 176, 0, 0.08);
+  --page-grid: rgba(255, 176, 0, 0.025);
+  color: var(--text);
+}
+
+.shell[data-theme="amber_console"] :is(
+  .topbar,
+  .side-panel,
+  .main-panel,
+  .report-panel,
+  .preference-band,
+  .onboarding-modal,
+  .import-modal,
+  .application-entry-modal,
+  .workspace-tutorial,
+  .fresh-start-modal
+) {
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(255, 176, 0, 0.035);
+}
+
+.shell[data-theme="amber_console"] :is(button, input, select, textarea, .searchbox, .status-pill) {
+  border-radius: 2px;
+}
+
+.shell[data-theme="amber_console"] :is(h1, h2, h3, .eyebrow, .workspace-tabs button) {
+  text-transform: uppercase;
+}
+
+.shell[data-theme="amber_console"] :is(.workspace-tabs button.active, .small-button:hover, .icon-button:hover) {
+  background: var(--green);
+  color: #080400;
+}
+
+.shell[data-theme="amber_console"] :focus-visible {
+  outline: 2px solid #ffd166;
+  outline-offset: 2px;
+}
+
 .shell[data-theme="light"] {
   color-scheme: light;
   --panel: #f7faf8;
@@ -1452,13 +1505,9 @@ select {
 
 .right-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 10px;
-}
-
-.right-tabs {
-  flex-wrap: wrap;
 }
 
 .backend-refresh {
@@ -1781,11 +1830,13 @@ button.crm-company {
   justify-content: center;
   align-items: center;
   gap: 7px;
+  min-width: 0;
   min-height: 36px;
   border: 1px solid var(--line);
   background: var(--panel-2);
   border-radius: 6px;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .right-tabs button.active {
@@ -2818,8 +2869,8 @@ button.crm-company {
 
 .theme-picker {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .theme-picker button,
@@ -2832,30 +2883,174 @@ button.crm-company {
 }
 
 .theme-picker button {
+  position: relative;
   display: grid;
-  gap: 7px;
+  grid-template-columns: 50px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
-  padding: 9px;
+  min-height: 68px;
+  padding: 10px;
   text-align: left;
 }
 
-.theme-picker button > span {
+.theme-swatches {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  height: 16px;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  width: 50px;
+  height: 42px;
   overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
   border-radius: 3px;
 }
 
-.theme-picker button strong {
+.theme-swatches i:first-child {
+  grid-row: 1 / 3;
+}
+
+.theme-option-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.theme-option-copy strong {
   overflow-wrap: anywhere;
-  font-size: 9px;
+  font-size: 11px;
+}
+
+.theme-option-copy small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.theme-selected-icon {
+  color: var(--green);
 }
 
 .theme-picker button.active,
 .accent-picker button.active {
   border-color: var(--green);
   box-shadow: inset 0 0 0 1px var(--green);
+}
+
+.theme-picker button:hover,
+.accent-picker button:hover {
+  border-color: color-mix(in srgb, var(--green) 70%, var(--line));
+}
+
+.theme-specimen {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  border-radius: 4px;
+  padding: 11px;
+  background: color-mix(in srgb, var(--panel-2) 72%, var(--input));
+}
+
+.theme-specimen > header,
+.theme-specimen > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.theme-specimen > header {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.theme-specimen > header strong {
+  color: var(--green);
+  font-size: 11px;
+}
+
+.theme-specimen-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.theme-specimen-grid > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 7px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  padding: 8px;
+}
+
+.theme-specimen-grid svg {
+  grid-row: 1 / 3;
+  color: var(--green);
+}
+
+.theme-specimen-grid span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.theme-specimen-grid output {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.theme-specimen-meter {
+  display: grid;
+  grid-template-columns: minmax(100px, .4fr) minmax(100px, .3fr) minmax(150px, 1fr);
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.theme-specimen-meter strong {
+  color: var(--text);
+  font-size: 10px;
+}
+
+.theme-specimen-meter > i {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--input);
+}
+
+.theme-specimen-meter > i b {
+  display: block;
+  width: 66.666%;
+  height: 100%;
+  background: var(--green);
+}
+
+.theme-specimen > footer {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.theme-preview-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green);
+}
+
+.theme-preview-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
 }
 
 .accent-picker {
@@ -2901,6 +3096,7 @@ button.crm-company {
 .panel-size-controls input {
   grid-column: 1 / -1;
   width: 100%;
+  min-width: 0;
   accent-color: var(--green);
 }
 
@@ -3332,8 +3528,7 @@ button.crm-company {
   .calendar-scroll { overflow-x: auto; padding-bottom: 4px; }
   .calendar-export-settings,
   .panel-size-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .calendar-kind-grid,
-  .theme-picker { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .calendar-kind-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
   .metrics-grid,
   .ops-grid {
@@ -3527,8 +3722,16 @@ button.crm-company {
   .application-entry-grid,
   .calendar-export-settings,
   .calendar-kind-grid,
-  .panel-size-controls,
-  .theme-picker {
+  .panel-size-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .theme-picker,
+  .theme-specimen-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .theme-specimen-meter {
     grid-template-columns: 1fr;
   }
 

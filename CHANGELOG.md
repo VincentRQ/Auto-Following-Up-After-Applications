@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0 - 2026-08-02
+
+- Added Amber Console as a dependency-free full-workspace theme inspired by the
+  open-source AmberConsole design system.
+- Kept the integration lightweight: no AmberConsole JavaScript, stylesheet,
+  font, package, or network request is included.
+- Rebuilt the theme selector as six descriptive, keyboard-accessible options
+  with an explicit selected state.
+- Added a live theme specimen for operational counts, readiness progress, and
+  status treatment before a user commits to a visual style.
+- Improved customization legibility at desktop and 390 px phone widths, with
+  responsive theme cards and stacked preview metrics.
+- Corrected right-panel tab overflow and panel-slider sizing in the Advanced
+  console.
+
 ## 0.5.0 - 2026-07-31
 
 - Added Today as the default screen, with new applications, contact gaps, draft

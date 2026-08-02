@@ -6,3 +6,10 @@ This repository includes an MCP wrapper for a local outreach backend. Apollo,
 Skrapp, Microsoft Outlook, Microsoft Graph, Codex, Claude, and other named
 products are trademarks or services of their respective owners. They are not
 redistributed by this project and are governed by their own terms.
+
+The optional Amber Console theme is an original, dependency-free adaptation
+inspired by AmberConsole by DutchDiederik:
+https://github.com/DutchDiederik/AmberConsole
+
+No AmberConsole JavaScript, font files, or stylesheet is bundled with this
+project. AmberConsole is distributed separately under the BSD 3-Clause License.

@@ -1,4 +1,4 @@
-import { Download, PanelLeftClose, Palette, RotateCcw, Upload } from "lucide-react";
+import { Check, Clock3, Download, MailCheck, PanelLeftClose, Palette, RotateCcw, Send, Upload } from "lucide-react";
 import type { WorkflowPreferences } from "../types";
 
 interface CustomizationViewProps {
@@ -10,12 +10,13 @@ interface CustomizationViewProps {
   onResetPanels: () => void;
 }
 
-const themes: Array<{ value: WorkflowPreferences["colorTheme"]; label: string; colors: string[] }> = [
-  { value: "terminal", label: "Terminal", colors: ["#090b0a", "#48d597", "#7dd3fc"] },
-  { value: "light", label: "Daylight", colors: ["#f1f5f3", "#08794f", "#b72d3a"] },
-  { value: "graphite", label: "Graphite", colors: ["#161719", "#68d5c4", "#ff7a8a"] },
-  { value: "mulberry", label: "Mulberry", colors: ["#1b1018", "#8de1bd", "#83c8ff"] },
-  { value: "high_contrast", label: "High contrast", colors: ["#000000", "#60ffa9", "#ffd166"] },
+const themes: Array<{ value: WorkflowPreferences["colorTheme"]; label: string; description: string; colors: string[] }> = [
+  { value: "terminal", label: "Terminal", description: "Balanced green and cyan operations view.", colors: ["#090b0a", "#48d597", "#7dd3fc"] },
+  { value: "amber_console", label: "Amber Console", description: "Framed monochrome display with amber readouts.", colors: ["#080400", "#ffb000", "#ffe1a3"] },
+  { value: "light", label: "Daylight", description: "Bright workspace for daytime environments.", colors: ["#f1f5f3", "#08794f", "#b72d3a"] },
+  { value: "graphite", label: "Graphite", description: "Neutral dark surfaces with soft signals.", colors: ["#161719", "#68d5c4", "#ff7a8a"] },
+  { value: "mulberry", label: "Mulberry", description: "Warm dark surfaces with cool actions.", colors: ["#1b1018", "#8de1bd", "#83c8ff"] },
+  { value: "high_contrast", label: "High contrast", description: "Maximum separation for critical controls.", colors: ["#000000", "#60ffa9", "#ffd166"] },
 ];
 
 const accents: Array<{ value: WorkflowPreferences["accentColor"]; label: string; color: string }> = [
@@ -36,6 +37,7 @@ const backgroundEffects: Array<{ value: WorkflowPreferences["backgroundEffect"];
 ];
 
 export function CustomizationView({ value, onChange, onReset, onExport, onImport, onResetPanels }: CustomizationViewProps) {
+  const selectedTheme = themes.find((theme) => theme.value === value.colorTheme) ?? themes[0];
   const updateModule = (name: keyof WorkflowPreferences["modules"], enabled: boolean) => {
     onChange({ ...value, modules: { ...value.modules, [name]: enabled } });
   };
@@ -52,10 +54,29 @@ export function CustomizationView({ value, onChange, onReset, onExport, onImport
 
       <div className="preference-band">
         <h3><Palette size={16} /> Full color theme</h3>
-        <div className="theme-picker">
-          {themes.map((theme) => <button key={theme.value} className={value.colorTheme === theme.value ? "active" : ""} onClick={() => onChange({ ...value, colorTheme: theme.value })}><span>{theme.colors.map((color) => <i key={color} style={{ background: color }} />)}</span><strong>{theme.label}</strong></button>)}
+        <div className="theme-picker" aria-label="Full color theme">
+          {themes.map((theme) => {
+            const active = value.colorTheme === theme.value;
+            return (
+              <button key={theme.value} type="button" className={active ? "active" : ""} aria-pressed={active} onClick={() => onChange({ ...value, colorTheme: theme.value })}>
+                <span className="theme-swatches" aria-hidden="true">{theme.colors.map((color) => <i key={color} style={{ background: color }} />)}</span>
+                <span className="theme-option-copy"><strong>{theme.label}</strong><small>{theme.description}</small></span>
+                {active && <Check className="theme-selected-icon" size={15} aria-hidden="true" />}
+              </button>
+            );
+          })}
         </div>
-        <p>Theme changes the page, panels, fields, borders, and text. Accent changes the primary action color inside that theme.</p>
+        <div className="theme-specimen" aria-label={`${selectedTheme.label} interface preview`}>
+          <header><span>Live interface preview</span><strong>{selectedTheme.label}</strong></header>
+          <div className="theme-specimen-grid">
+            <div><Send size={15} aria-hidden="true" /><span>Scheduled</span><output>6</output></div>
+            <div><MailCheck size={15} aria-hidden="true" /><span>Replies</span><output>2</output></div>
+            <div><Clock3 size={15} aria-hidden="true" /><span>Spacing</span><output>{value.defaultSpacingSeconds}s</output></div>
+          </div>
+          <div className="theme-specimen-meter"><span>Batch readiness</span><strong>4 of 6 reviewed</strong><i role="progressbar" aria-label="Batch readiness" aria-valuemin={0} aria-valuemax={6} aria-valuenow={4}><b /></i></div>
+          <footer><span className="theme-preview-status"><i /> Ready to run</span><span>Review remains required</span></footer>
+        </div>
+        <p>Theme changes the full workspace. Accent changes primary actions; background effects remain optional. Amber Console is a lightweight adaptation inspired by the open-source AmberConsole design system.</p>
         <div className="preference-grid">
           <label>Density<select value={value.density} onChange={(event) => onChange({ ...value, density: event.target.value as WorkflowPreferences["density"] })}><option value="compact">Compact</option><option value="comfortable">Comfortable</option></select></label>
           <label>Background effect<select value={value.backgroundEffect} onChange={(event) => onChange({ ...value, backgroundEffect: event.target.value as WorkflowPreferences["backgroundEffect"] })}>{backgroundEffects.map((effect) => <option key={effect.value} value={effect.value}>{effect.label}</option>)}</select></label>
