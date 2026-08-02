@@ -57,6 +57,17 @@ Browser-only setup keeps provider work manual and hides connection controls that
 
 The setup wizard can be reopened from the top bar. Start Fresh clears only Outreach Console state and offers a backup first. It does not remove resumes, spreadsheets, credentials, CLI logins, provider configuration, or external databases.
 
+## Appearance
+
+Settings -> Customize includes six full-workspace themes, five action accents,
+two density levels, six optional background effects, adjustable panel widths,
+and a reduced-motion control. The live specimen shows the selected colors on
+the same status, count, and progress elements used throughout the console.
+
+The **Amber Console** option is a dependency-free theme adapted for this
+project and inspired by [DutchDiederik/AmberConsole](https://github.com/DutchDiederik/AmberConsole).
+It does not download or bundle AmberConsole fonts, JavaScript, or stylesheets.
+
 ## Daily Use
 
 Today opens by default and answers five questions without making you interpret system logs:

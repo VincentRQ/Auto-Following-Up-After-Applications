@@ -78,7 +78,7 @@ export function normalizeWorkflowPreferences(value: Partial<WorkflowPreferences>
     interfaceMode: value?.interfaceMode === "advanced" ? "advanced" : "simple",
     showProcessRail: value?.showProcessRail !== false,
     showGuidancePanel: value?.showGuidancePanel !== false,
-    colorTheme: ["terminal", "light", "graphite", "mulberry", "high_contrast"].includes(value?.colorTheme ?? "") ? value!.colorTheme! : defaultWorkflowPreferences.colorTheme,
+    colorTheme: ["terminal", "amber_console", "light", "graphite", "mulberry", "high_contrast"].includes(value?.colorTheme ?? "") ? value!.colorTheme! : defaultWorkflowPreferences.colorTheme,
     density: ["compact", "comfortable"].includes(value?.density ?? "") ? value!.density! : defaultWorkflowPreferences.density,
     accentColor: ["green", "cyan", "amber", "rose", "violet"].includes(value?.accentColor ?? "") ? value!.accentColor! : defaultWorkflowPreferences.accentColor,
     backgroundEffect: ["off", "scanlines", "grid_drift", "signal_sweep", "data_points", "circuit_traces"].includes(value?.backgroundEffect ?? "") ? value!.backgroundEffect! : defaultWorkflowPreferences.backgroundEffect,

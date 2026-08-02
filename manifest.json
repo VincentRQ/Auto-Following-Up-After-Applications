@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "outreach-console-mcp",
   "display_name": "Outreach Console MCP",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Operate a local job-application outreach pipeline with explicit provider and send controls.",
   "long_description": "Connects an AI assistant to a local company-centric outreach backend. Application tracking and aggregate status are read-only by default. Contact PII, mailbox content, paid enrichment, email-provider drafts, AI writing, and live sends are disabled unless explicitly enabled. External and state-changing actions require short-lived confirmation tokens bound to the exact arguments.",
   "author": {

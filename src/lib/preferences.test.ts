@@ -18,6 +18,7 @@ describe("preference normalization", () => {
 
   it("keeps full themes and expanded accents", () => {
     expect(normalizeWorkflowPreferences({ colorTheme: "graphite", accentColor: "rose" }).colorTheme).toBe("graphite");
+    expect(normalizeWorkflowPreferences({ colorTheme: "amber_console" }).colorTheme).toBe("amber_console");
     expect(normalizeWorkflowPreferences({ colorTheme: "mulberry", accentColor: "violet" }).accentColor).toBe("violet");
     expect(normalizeWorkflowPreferences({ backgroundEffect: "circuit_traces" }).backgroundEffect).toBe("circuit_traces");
     expect(normalizeWorkflowPreferences({ backgroundEffect: "invalid" as never }).backgroundEffect).toBe("scanlines");
