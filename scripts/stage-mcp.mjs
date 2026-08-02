@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const stage = join(root, "build", "mcp");
+const packageInfo = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const manifest = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
+if (manifest.version !== packageInfo.version) {
+  throw new Error(`MCP manifest version ${manifest.version} does not match package version ${packageInfo.version}.`);
+}
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(join(stage, "dist"), { recursive: true });
 cpSync(join(root, "dist", "outreach-mcp.js"), join(stage, "dist", "outreach-mcp.js"));
