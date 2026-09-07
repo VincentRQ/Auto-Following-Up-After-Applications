@@ -36,16 +36,16 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.2",
-    "@types/react-dom": "^19.0.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^5.1.1",
-    "esbuild": "^0.28.1",
-    "lucide-react": "^0.468.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "read-excel-file": "^9.3.1",
+    "esbuild": "^0.28.2",
+    "lucide-react": "^0.577.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "read-excel-file": "^9.3.10",
     "typescript": "^5.7.2",
     "vite": "^7.2.7",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.11"
   }
 }
